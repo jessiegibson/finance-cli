@@ -10,7 +10,7 @@ pub mod pnl;
 pub use cashflow::CashFlowReport;
 pub use pnl::PnLReport;
 
-use crate::models::{DateRange, Money, Transaction};
+use crate::models::{Money, Transaction};
 
 /// Aggregate transactions by category.
 pub fn aggregate_by_category(

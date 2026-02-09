@@ -1,6 +1,6 @@
 //! Rule matching logic for categorization.
 
-use crate::models::{ConditionField, LogicalOperator, Rule, RuleCondition, RuleOperator, Transaction};
+use crate::models::{ConditionField, LogicalOperator, Rule, RuleCondition, Transaction};
 
 /// Matcher for applying rules to transactions.
 pub struct RuleMatcher;
@@ -57,7 +57,7 @@ impl RuleMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Money, RuleBuilder, RuleConditions};
+    use crate::models::{Money, RuleBuilder};
     use chrono::NaiveDate;
     use rust_decimal_macros::dec;
     use uuid::Uuid;

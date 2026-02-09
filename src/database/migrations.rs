@@ -1,7 +1,7 @@
 //! Database migrations for schema management.
 
 use super::connection::Connection;
-use crate::error::{DatabaseError, Error, Result};
+use crate::error::Result;
 
 /// Current schema version.
 pub const SCHEMA_VERSION: i32 = 1;

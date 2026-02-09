@@ -2,7 +2,7 @@
 
 use crate::config::Config;
 use crate::error::{DatabaseError, Error, Result};
-use duckdb::{params, Connection as DuckDbConnection};
+use duckdb::Connection as DuckDbConnection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 

@@ -65,14 +65,14 @@ pub enum TransactionAction {
     },
 }
 
-pub fn handle_transaction(cmd: TransactionCommand, config: &Config, conn: &Connection) -> Result<()> {
+pub fn handle_transaction(cmd: TransactionCommand, _config: &Config, _conn: &Connection) -> Result<()> {
     use colored::Colorize;
 
     match cmd.action {
         TransactionAction::Import {
             file,
-            account,
-            no_dedupe,
+            account: _,
+            no_dedupe: _,
             dry_run,
         } => {
             println!("{}", "Import Transactions".bold());
@@ -89,10 +89,10 @@ pub fn handle_transaction(cmd: TransactionCommand, config: &Config, conn: &Conne
         }
 
         TransactionAction::List {
-            limit,
+            limit: _,
             uncategorized,
             year,
-            month,
+            month: _,
         } => {
             println!("{}", "Transactions".bold());
             println!();

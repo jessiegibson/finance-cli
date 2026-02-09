@@ -41,7 +41,7 @@ pub enum CategoryAction {
     },
 }
 
-pub fn handle_category(cmd: CategoryCommand, config: &Config, conn: &Connection) -> Result<()> {
+pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection) -> Result<()> {
     use colored::Colorize;
 
     match cmd.action {
@@ -62,15 +62,15 @@ pub fn handle_category(cmd: CategoryCommand, config: &Config, conn: &Connection)
             }
 
             // Group by type
-            let mut income: Vec<_> = categories
+            let income: Vec<_> = categories
                 .iter()
                 .filter(|c| matches!(c.category_type, crate::models::CategoryType::Income))
                 .collect();
-            let mut expense: Vec<_> = categories
+            let expense: Vec<_> = categories
                 .iter()
                 .filter(|c| matches!(c.category_type, crate::models::CategoryType::Expense))
                 .collect();
-            let mut personal: Vec<_> = categories
+            let personal: Vec<_> = categories
                 .iter()
                 .filter(|c| matches!(c.category_type, crate::models::CategoryType::Personal))
                 .collect();

@@ -152,11 +152,6 @@ fn parse_ofx_amount(s: &str) -> Result<Money> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::AccountType;
-
-    fn test_account() -> Account {
-        Account::new("Test", "Test Bank", AccountType::Checking)
-    }
 
     #[test]
     fn test_extract_tag() {

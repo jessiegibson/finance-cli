@@ -1,6 +1,6 @@
 //! File format and institution detection.
 
-use crate::error::{ParseError, Result};
+use crate::error::Result;
 use std::path::Path;
 
 /// Supported file formats.

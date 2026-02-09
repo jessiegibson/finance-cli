@@ -2,9 +2,8 @@
 
 use super::connection::Connection;
 use super::models::{account_type_to_string, category_type_to_string, row_to_account, row_to_category};
-use crate::error::{DatabaseError, Error, Result};
-use crate::models::{Account, Category, DateRange, Money, Rule, Transaction};
-use chrono::NaiveDate;
+use crate::error::Result;
+use crate::models::{Account, Category, DateRange, Rule, Transaction};
 use uuid::Uuid;
 
 /// Repository for Account operations.
@@ -173,13 +172,7 @@ impl<'a> TransactionRepository<'a> {
     }
 
     /// Get transactions by date range.
-    pub fn find_by_date_range(&self, range: &DateRange) -> Result<Vec<Transaction>> {
-        // Simplified - would need full row mapping
-        let sql = format!(
-            "SELECT id, account_id, transaction_date, amount, description FROM transactions WHERE transaction_date BETWEEN '{}' AND '{}' ORDER BY transaction_date DESC",
-            range.start, range.end
-        );
-
+    pub fn find_by_date_range(&self, _range: &DateRange) -> Result<Vec<Transaction>> {
         // For now, return empty - full implementation would map rows
         Ok(Vec::new())
     }
@@ -242,7 +235,7 @@ impl<'a> RuleRepository<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::{initialize_test, migrations};
+    use crate::database::initialize_test;
     use crate::models::AccountType;
 
     #[test]
