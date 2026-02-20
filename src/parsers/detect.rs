@@ -107,24 +107,39 @@ impl Institution {
     }
 }
 
+/// Check if `text` contains `word` as a whole word (not as a substring of another word).
+fn contains_word(text: &str, word: &str) -> bool {
+    for (i, _) in text.match_indices(word) {
+        let before_ok = i == 0 || !text.as_bytes()[i - 1].is_ascii_alphanumeric();
+        let after_idx = i + word.len();
+        let after_ok = after_idx >= text.len() || !text.as_bytes()[after_idx].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+    }
+    false
+}
+
 /// Detect institution from CSV headers or content.
 pub fn detect_institution(content: &str) -> Institution {
     let lower = content.to_lowercase();
 
-    // Check headers and content patterns
-    if lower.contains("chase") || lower.contains("details,posting date,description,amount") {
+    // Check institution-specific header patterns first (most reliable),
+    // then fall back to whole-word keyword matching to avoid false positives
+    // (e.g. "chase" inside "purchase", "ally" inside "finally").
+    if lower.contains("details,posting date,description,amount") || contains_word(&lower, "chase") {
         Institution::Chase
-    } else if lower.contains("bank of america") || lower.contains("bofa") {
+    } else if lower.contains("bank of america") || contains_word(&lower, "bofa") {
         Institution::BankOfAmerica
-    } else if lower.contains("wealthfront") {
+    } else if contains_word(&lower, "wealthfront") {
         Institution::Wealthfront
-    } else if lower.contains("ally") {
+    } else if contains_word(&lower, "ally") {
         Institution::Ally
-    } else if lower.contains("american express") || lower.contains("amex") {
+    } else if lower.contains("american express") || contains_word(&lower, "amex") {
         Institution::AmericanExpress
-    } else if lower.contains("discover") {
+    } else if contains_word(&lower, "discover") {
         Institution::Discover
-    } else if lower.contains("citi") || lower.contains("citibank") {
+    } else if contains_word(&lower, "citibank") || contains_word(&lower, "citi") {
         Institution::Citi
     } else if lower.contains("capital one") {
         Institution::CapitalOne

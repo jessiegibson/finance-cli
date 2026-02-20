@@ -126,6 +126,12 @@ fn extract_tag(content: &str, tag: &str) -> Option<String> {
         if let Some(end) = remaining.find('\n') {
             return Some(remaining[..end].trim().to_string());
         }
+
+        // Value extends to end of string
+        let trimmed = remaining.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
     }
 
     None
