@@ -23,7 +23,7 @@ pub fn aggregate_by_category(
     for tx in transactions {
         if let Some(cat_id) = tx.category_id {
             let entry = totals.entry(cat_id).or_insert_with(Money::zero);
-            *entry = *entry + tx.amount;
+            *entry += tx.amount;
         }
     }
 

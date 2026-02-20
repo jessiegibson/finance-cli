@@ -138,7 +138,7 @@ mod tests {
             test_tx(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap(), 500.0),
         ];
 
-        let date_range = DateRange::year(2024);
+        let date_range = DateRange::year(2024).unwrap();
         let report = CashFlowReport::generate(&transactions, date_range);
 
         assert_eq!(report.total_inflows.0, dec!(1500.0));
@@ -155,7 +155,7 @@ mod tests {
             test_tx(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap(), 500.0),
         ];
 
-        let date_range = DateRange::year(2024);
+        let date_range = DateRange::year(2024).unwrap();
         let report = CashFlowReport::generate(&transactions, date_range);
         let monthly = report.monthly_summary();
 

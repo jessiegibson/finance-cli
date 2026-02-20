@@ -70,24 +70,29 @@ impl DateRange {
     }
 
     /// Create a date range for a specific year.
-    pub fn year(year: i32) -> Self {
-        Self {
-            start: NaiveDate::from_ymd_opt(year, 1, 1).expect("valid date"),
-            end: NaiveDate::from_ymd_opt(year, 12, 31).expect("valid date"),
-        }
+    ///
+    /// # Errors
+    /// Returns `None` if the year is out of range for `NaiveDate`.
+    pub fn year(year: i32) -> Option<Self> {
+        Some(Self {
+            start: NaiveDate::from_ymd_opt(year, 1, 1)?,
+            end: NaiveDate::from_ymd_opt(year, 12, 31)?,
+        })
     }
 
     /// Create a date range for a specific month.
-    pub fn month(year: i32, month: u32) -> Self {
-        let start = NaiveDate::from_ymd_opt(year, month, 1).expect("valid date");
+    ///
+    /// # Errors
+    /// Returns `None` if the year/month combination is out of range for `NaiveDate`.
+    pub fn month(year: i32, month: u32) -> Option<Self> {
+        let start = NaiveDate::from_ymd_opt(year, month, 1)?;
         let end = if month == 12 {
-            NaiveDate::from_ymd_opt(year + 1, 1, 1).expect("valid date")
+            NaiveDate::from_ymd_opt(year + 1, 1, 1)?
         } else {
-            NaiveDate::from_ymd_opt(year, month + 1, 1).expect("valid date")
+            NaiveDate::from_ymd_opt(year, month + 1, 1)?
         }
-        .pred_opt()
-        .expect("valid date");
-        Self { start, end }
+        .pred_opt()?;
+        Some(Self { start, end })
     }
 
     /// Check if a date is within this range.
