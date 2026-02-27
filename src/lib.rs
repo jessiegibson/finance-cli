@@ -58,7 +58,8 @@ pub fn run() -> Result<()> {
     tracing::info!("Starting Finance CLI application");
 
     // Parse command line arguments
-    let cli_args = cli::parse_args()?;
+    let cli_args = cli::parse_args()
+        .map_err(|e| Error::Config(format!("Failed to parse command-line arguments: {e}")))?;
     tracing::debug!("Parsed CLI arguments");
 
     // Initialize logging level based on CLI flags
@@ -74,7 +75,10 @@ pub fn run() -> Result<()> {
     config.ensure_directories()?;
 
     // Initialize database connection
-    let db = database::initialize(&config)?;
+    let db = database::initialize(&config)
+        .map_err(|e| Error::Database(crate::error::DatabaseError::ConnectionFailed(
+            format!("Failed to initialize database: {e}"),
+        )))?;
     tracing::debug!("Database initialized");
 
     // Execute the requested command

@@ -115,7 +115,6 @@ impl PnLReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::CategoryType;
     use chrono::NaiveDate;
     use rust_decimal_macros::dec;
 
@@ -143,7 +142,7 @@ mod tests {
         ];
 
         let categories = vec![income_cat, expense_cat];
-        let date_range = DateRange::year(2024);
+        let date_range = DateRange::year(2024).unwrap();
 
         let report = PnLReport::generate(&transactions, &categories, date_range);
 

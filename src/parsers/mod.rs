@@ -20,7 +20,7 @@ pub mod qfx;
 pub use detect::{detect_format, detect_institution, FileFormat};
 
 use crate::error::{ParseError, Result};
-use crate::models::{Account, Money, Transaction, TransactionBuilder};
+use crate::models::{Account, Transaction};
 use std::path::Path;
 
 /// Result of parsing a transaction file.
@@ -80,11 +80,6 @@ pub fn parse_csv_content(content: &str, account: &Account, institution: Option<&
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::AccountType;
-
-    fn test_account() -> Account {
-        Account::new("Test Account", "Test Bank", AccountType::Checking)
-    }
 
     #[test]
     fn test_parse_result_new() {

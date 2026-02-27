@@ -141,8 +141,7 @@ fn parse_date(s: &str, format: &str) -> Result<NaiveDate> {
 fn parse_amount(s: &str) -> Result<Money> {
     let cleaned = s
         .trim()
-        .replace('$', "")
-        .replace(',', "")
+        .replace(['$', ','], "")
         .replace(['(', ')'], "");
 
     let is_negative = s.contains('(') || s.starts_with('-');

@@ -21,7 +21,9 @@ use std::process::ExitCode;
 /// - 0: Success
 /// - 1: General application error
 /// - 2: Configuration error
-/// - 3: Permission/security error
+/// - 3: Encryption/security error
+/// - 4: I/O error
+/// - 5: Database error
 fn main() -> ExitCode {
     // Initialize logging early to catch any startup issues
     if let Err(e) = finance_cli::logging::init() {
@@ -36,14 +38,21 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            tracing::error!("Application error: {e}");
+            // Log detailed error for debugging (goes to log file/subscriber)
+            tracing::error!("Application error: {e:?}");
+
+            // Display user-friendly error to stderr
             eprintln!("Error: {e}");
+            if let Some(suggestion) = e.suggestion() {
+                eprintln!("Hint: {suggestion}");
+            }
 
             // Provide context-specific exit codes for better error handling
             match &e {
                 finance_cli::Error::Config(_) => ExitCode::from(2),
                 finance_cli::Error::Encryption(_) => ExitCode::from(3),
-                finance_cli::Error::Io { .. } => ExitCode::from(3),
+                finance_cli::Error::Io { .. } => ExitCode::from(4),
+                finance_cli::Error::Database(_) => ExitCode::from(5),
                 _ => ExitCode::FAILURE,
             }
         }

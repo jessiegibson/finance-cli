@@ -5,7 +5,7 @@
 //! after use.
 
 use std::ops::{Deref, DerefMut};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 /// Secure string that automatically zeroizes on drop.
 ///

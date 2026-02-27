@@ -3,7 +3,7 @@
 use super::{CategorizationMethod, CategorizationResult, RuleMatcher};
 use crate::database::Connection;
 use crate::error::Result;
-use crate::models::{Category, CategorizedBy, Rule, Transaction};
+use crate::models::{Category, Rule, Transaction};
 use uuid::Uuid;
 
 /// The categorization engine applies rules to transactions.
@@ -109,12 +109,8 @@ impl CategorizationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{
-        Category, CategoryType, ConditionField, Money, Rule, RuleBuilder, RuleCondition,
-        RuleConditions, Transaction,
-    };
+    use crate::models::{Money, RuleBuilder, Transaction};
     use chrono::NaiveDate;
-    use rust_decimal_macros::dec;
 
     fn test_transaction(description: &str, amount: f64) -> Transaction {
         Transaction::new(

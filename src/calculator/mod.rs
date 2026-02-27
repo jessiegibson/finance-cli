@@ -10,7 +10,7 @@ pub mod pnl;
 pub use cashflow::CashFlowReport;
 pub use pnl::PnLReport;
 
-use crate::models::{DateRange, Money, Transaction};
+use crate::models::{Money, Transaction};
 
 /// Aggregate transactions by category.
 pub fn aggregate_by_category(
@@ -23,7 +23,7 @@ pub fn aggregate_by_category(
     for tx in transactions {
         if let Some(cat_id) = tx.category_id {
             let entry = totals.entry(cat_id).or_insert_with(Money::zero);
-            *entry = *entry + tx.amount;
+            *entry += tx.amount;
         }
     }
 

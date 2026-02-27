@@ -6,7 +6,7 @@ pub mod settings;
 
 pub use settings::{Config, ConfigBuilder};
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use std::path::Path;
 
 /// Load configuration from file or create default.

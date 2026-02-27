@@ -66,11 +66,11 @@ pub enum OutputFormat {
     Json,
 }
 
-pub fn handle_report(cmd: ReportCommand, config: &Config, conn: &Connection) -> Result<()> {
+pub fn handle_report(cmd: ReportCommand, _config: &Config, _conn: &Connection) -> Result<()> {
     use colored::Colorize;
 
     match cmd.action {
-        ReportAction::Pnl { year, format, output } => {
+        ReportAction::Pnl { year, format: _, output: _ } => {
             let year = year.unwrap_or_else(|| chrono::Utc::now().year());
             println!("{}", format!("Profit & Loss Report - {}", year).bold());
             println!();
@@ -79,7 +79,7 @@ pub fn handle_report(cmd: ReportCommand, config: &Config, conn: &Connection) -> 
             println!("{}", "P&L report functionality coming soon!".yellow());
         }
 
-        ReportAction::Cashflow { year, format } => {
+        ReportAction::Cashflow { year, format: _ } => {
             let year = year.unwrap_or_else(|| chrono::Utc::now().year());
             println!("{}", format!("Cash Flow Report - {}", year).bold());
             println!();
@@ -88,7 +88,7 @@ pub fn handle_report(cmd: ReportCommand, config: &Config, conn: &Connection) -> 
             println!("{}", "Cash flow report functionality coming soon!".yellow());
         }
 
-        ReportAction::ScheduleC { year, format } => {
+        ReportAction::ScheduleC { year, format: _ } => {
             println!("{}", format!("Schedule C Summary - Tax Year {}", year).bold());
             println!();
 

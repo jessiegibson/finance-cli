@@ -11,7 +11,7 @@ pub use engine::CategorizationEngine;
 pub use ml::MlCategorizer;
 pub use rules::RuleMatcher;
 
-use crate::models::{Category, Rule, Transaction};
+use crate::models::{Category, Rule};
 
 /// Result of categorizing a single transaction.
 #[derive(Debug)]
