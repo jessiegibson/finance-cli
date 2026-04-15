@@ -88,6 +88,21 @@ pub enum TransactionAction {
         /// Search query
         query: String,
     },
+
+    /// Delete transactions by ID or account
+    Delete {
+        /// Transaction ID to delete (mutually exclusive with --account)
+        #[arg(short, long)]
+        id: Option<String>,
+
+        /// Account name to delete all transactions from (mutually exclusive with --id)
+        #[arg(short, long)]
+        account: Option<String>,
+
+        /// Preview changes without deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 pub fn handle_transaction(cmd: TransactionCommand, _config: &Config, conn: &Connection) -> Result<()> {
@@ -122,6 +137,10 @@ pub fn handle_transaction(cmd: TransactionCommand, _config: &Config, conn: &Conn
             println!();
             println!("{}", "Search functionality coming soon!".yellow());
             Ok(())
+        }
+
+        TransactionAction::Delete { id, account, dry_run } => {
+            handle_delete(id, account, dry_run, conn)
         }
     }
 }
@@ -710,6 +729,69 @@ fn handle_bulk_categorize(
                 no_match
             ));
         }
+    }
+
+    Ok(())
+}
+
+fn handle_delete(id: Option<String>, account: Option<String>, dry_run: bool, conn: &Connection) -> Result<()> {
+    use colored::Colorize;
+
+    // Validate that exactly one of --id or --account is provided
+    match (&id, &account) {
+        (None, None) => return Err(crate::error::Error::InvalidInput(
+            "Must provide either --id <ID> or --account <NAME>".to_string()
+        )),
+        (Some(_), Some(_)) => return Err(crate::error::Error::InvalidInput(
+            "Cannot use both --id and --account".to_string()
+        )),
+        _ => {}
+    }
+
+    let tx_repo = TransactionRepository::new(conn);
+
+    if let Some(transaction_id) = id {
+        // Delete by transaction ID
+        let tx_uuid = uuid::Uuid::parse_str(&transaction_id)
+            .map_err(|_| crate::error::Error::InvalidInput(format!("Invalid UUID: {}", transaction_id)))?;
+
+        // Find the transaction to display it
+        if let Ok(Some(tx)) = tx_repo.find_by_id(tx_uuid) {
+            println!("  {}", format!("Transaction to delete:").bold());
+            println!("    Date: {}", tx.transaction_date);
+            println!("    Amount: {}", tx.amount);
+            println!("    Description: {}", truncate_str(&tx.description, 50));
+
+            if dry_run {
+                println!();
+                println!("{}", "  [DRY RUN] Would delete this transaction".yellow());
+                return Ok(());
+            }
+
+            tx_repo.delete_by_id(tx_uuid)?;
+            println!();
+            println!("{}", "✓ Transaction deleted".green());
+        } else {
+            return Err(crate::error::Error::InvalidInput(format!("Transaction not found: {}", transaction_id)));
+        }
+    } else if let Some(account_name) = account {
+        // Delete all transactions for account
+        let acc_repo = crate::database::AccountRepository::new(conn);
+        let found_account = acc_repo.find_by_name(&account_name)?
+            .ok_or_else(|| crate::error::Error::InvalidInput(format!("Account not found: {}", account_name)))?;
+
+        println!("{}", format!("Account: {}", found_account.name).bold());
+
+        if dry_run {
+            println!("  All transactions for this account would be deleted");
+            println!();
+            println!("{}", "  [DRY RUN] Would delete all transactions for this account".yellow());
+            return Ok(());
+        }
+
+        tx_repo.delete_by_account(found_account.id)?;
+        println!();
+        println!("{}", format!("✓ All transactions deleted for account: {}", found_account.name).green());
     }
 
     Ok(())

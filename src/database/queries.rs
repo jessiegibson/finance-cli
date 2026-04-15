@@ -333,6 +333,37 @@ impl<'a> TransactionRepository<'a> {
         )?;
         Ok(result.unwrap_or(0))
     }
+
+    /// Find a transaction by ID.
+    pub fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>> {
+        let sql = format!(
+            "SELECT id, account_id, category_id, import_batch_id, transaction_date, amount, \
+             description, raw_category, merchant_name, location, reference_number, transaction_hash, \
+             schedule_c_line, is_business_expense, is_tax_deductible, is_recurring, expense_type, \
+             categorized_by, confidence_score \
+             FROM transactions WHERE id = '{}'",
+            id
+        );
+
+        match self.conn.query_map(&sql, row_to_transaction) {
+            Ok(rows) => Ok(rows.into_iter().next()),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Delete a transaction by ID.
+    pub fn delete_by_id(&self, id: Uuid) -> Result<()> {
+        let sql = format!("DELETE FROM transactions WHERE id = '{}'", id);
+        self.conn.execute(&sql)?;
+        Ok(())
+    }
+
+    /// Delete all transactions for an account.
+    pub fn delete_by_account(&self, account_id: Uuid) -> Result<()> {
+        let sql = format!("DELETE FROM transactions WHERE account_id = '{}'", account_id);
+        self.conn.execute(&sql)?;
+        Ok(())
+    }
 }
 
 /// Repository for Rule operations.
