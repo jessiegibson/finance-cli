@@ -89,15 +89,23 @@ pub enum TransactionAction {
         query: String,
     },
 
-    /// Delete transactions by ID or account
+    /// Delete transactions by ID, account, or all
     Delete {
-        /// Transaction ID to delete (mutually exclusive with --account)
+        /// Transaction ID to delete (mutually exclusive with --account and --all)
         #[arg(short, long)]
         id: Option<String>,
 
-        /// Account name to delete all transactions from (mutually exclusive with --id)
+        /// Account name to delete all transactions from (mutually exclusive with --id and --all)
         #[arg(short, long)]
         account: Option<String>,
+
+        /// Delete all transactions from all accounts
+        #[arg(long)]
+        all: bool,
+
+        /// Skip confirmation prompt (required for --all in non-interactive mode)
+        #[arg(long)]
+        confirm: bool,
 
         /// Preview changes without deleting
         #[arg(long)]
@@ -139,8 +147,8 @@ pub fn handle_transaction(cmd: TransactionCommand, _config: &Config, conn: &Conn
             Ok(())
         }
 
-        TransactionAction::Delete { id, account, dry_run } => {
-            handle_delete(id, account, dry_run, conn)
+        TransactionAction::Delete { id, account, all, confirm, dry_run } => {
+            handle_delete(id, account, all, confirm, dry_run, conn)
         }
     }
 }
@@ -734,18 +742,22 @@ fn handle_bulk_categorize(
     Ok(())
 }
 
-fn handle_delete(id: Option<String>, account: Option<String>, dry_run: bool, conn: &Connection) -> Result<()> {
+fn handle_delete(
+    id: Option<String>,
+    account: Option<String>,
+    all: bool,
+    confirm: bool,
+    dry_run: bool,
+    conn: &Connection,
+) -> Result<()> {
     use colored::Colorize;
 
-    // Validate that exactly one of --id or --account is provided
-    match (&id, &account) {
-        (None, None) => return Err(crate::error::Error::InvalidInput(
-            "Must provide either --id <ID> or --account <NAME>".to_string()
-        )),
-        (Some(_), Some(_)) => return Err(crate::error::Error::InvalidInput(
-            "Cannot use both --id and --account".to_string()
-        )),
-        _ => {}
+    // Validate that exactly one option is provided
+    let num_options = [id.is_some(), account.is_some(), all].iter().filter(|&&x| x).count();
+    if num_options != 1 {
+        return Err(crate::error::Error::InvalidInput(
+            "Must provide exactly one of: --id <ID>, --account <NAME>, or --all".to_string()
+        ));
     }
 
     let tx_repo = TransactionRepository::new(conn);
@@ -792,6 +804,35 @@ fn handle_delete(id: Option<String>, account: Option<String>, dry_run: bool, con
         tx_repo.delete_by_account(found_account.id)?;
         println!();
         println!("{}", format!("✓ All transactions deleted for account: {}", found_account.name).green());
+    } else if all {
+        // Delete ALL transactions from database
+        println!("{}", format!("WARNING: Delete ALL transactions from database").bold().red());
+        println!();
+
+        if dry_run {
+            println!("  All transactions would be deleted from the database");
+            println!();
+            println!("{}", "  [DRY RUN] Would delete ALL transactions".yellow());
+            return Ok(());
+        }
+
+        // Confirm deletion since this is destructive
+        if !confirm {
+            let confirmed = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Are you sure you want to delete ALL transactions?")
+                .default(false)
+                .interact()
+                .map_err(|e| crate::error::Error::InvalidInput(e.to_string()))?;
+
+            if !confirmed {
+                println!("{}", "Deletion cancelled.".yellow());
+                return Ok(());
+            }
+        }
+
+        tx_repo.delete_all()?;
+        println!();
+        println!("{}", "✓ All transactions deleted from database".green().bold());
     }
 
     Ok(())

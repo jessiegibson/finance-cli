@@ -364,6 +364,13 @@ impl<'a> TransactionRepository<'a> {
         self.conn.execute(&sql)?;
         Ok(())
     }
+
+    /// Delete all transactions from the database.
+    pub fn delete_all(&self) -> Result<()> {
+        let sql = "DELETE FROM transactions".to_string();
+        self.conn.execute(&sql)?;
+        Ok(())
+    }
 }
 
 /// Repository for Rule operations.
