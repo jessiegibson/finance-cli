@@ -9,6 +9,7 @@ pub enum FileFormat {
     Csv,
     Qfx,
     Ofx,
+    Iif,
     Unknown,
 }
 
@@ -18,6 +19,7 @@ impl FileFormat {
             FileFormat::Csv => "csv",
             FileFormat::Qfx => "qfx",
             FileFormat::Ofx => "ofx",
+            FileFormat::Iif => "iif",
             FileFormat::Unknown => "unknown",
         }
     }
@@ -31,6 +33,7 @@ pub fn detect_format(path: &Path) -> Result<FileFormat> {
             "csv" => return Ok(FileFormat::Csv),
             "qfx" => return Ok(FileFormat::Qfx),
             "ofx" => return Ok(FileFormat::Ofx),
+            "iif" => return Ok(FileFormat::Iif),
             _ => {}
         }
     }
@@ -48,6 +51,11 @@ pub fn detect_format(path: &Path) -> Result<FileFormat> {
 pub fn detect_format_from_content(content: &str) -> Result<FileFormat> {
     let trimmed = content.trim();
 
+    // IIF files start with !TRNS or other ! keywords on first line
+    if trimmed.starts_with("!TRNS") || trimmed.starts_with("!ACCNT") || trimmed.starts_with("!SPLIT") {
+        return Ok(FileFormat::Iif);
+    }
+
     // QFX/OFX files typically start with OFXHEADER or <?xml
     if trimmed.starts_with("OFXHEADER") || trimmed.contains("<OFX>") {
         return Ok(FileFormat::Qfx);
@@ -55,7 +63,7 @@ pub fn detect_format_from_content(content: &str) -> Result<FileFormat> {
 
     // Check for CSV-like content (comma-separated values with headers)
     if let Some(first_line) = trimmed.lines().next() {
-        if first_line.contains(',') && !first_line.contains('<') {
+        if first_line.contains(',') && !first_line.contains('<') && !first_line.starts_with('!') {
             return Ok(FileFormat::Csv);
         }
     }
@@ -74,6 +82,7 @@ pub enum Institution {
     Discover,
     Citi,
     CapitalOne,
+    SoFi,
     Unknown,
 }
 
@@ -88,6 +97,7 @@ impl Institution {
             Institution::Discover => "discover",
             Institution::Citi => "citi",
             Institution::CapitalOne => "capital_one",
+            Institution::SoFi => "sofi",
             Institution::Unknown => "unknown",
         }
     }
@@ -102,6 +112,7 @@ impl Institution {
             Institution::Discover => "Discover",
             Institution::Citi => "Citi",
             Institution::CapitalOne => "Capital One",
+            Institution::SoFi => "SoFi",
             Institution::Unknown => "Unknown",
         }
     }
@@ -121,13 +132,38 @@ fn contains_word(text: &str, word: &str) -> bool {
 }
 
 /// Detect institution from CSV headers or content.
+///
+/// Uses header-pattern matching first (most reliable), then falls back
+/// to whole-word keyword matching to avoid false positives.
 pub fn detect_institution(content: &str) -> Institution {
     let lower = content.to_lowercase();
 
-    // Check institution-specific header patterns first (most reliable),
-    // then fall back to whole-word keyword matching to avoid false positives
-    // (e.g. "chase" inside "purchase", "ally" inside "finally").
-    if lower.contains("details,posting date,description,amount") || contains_word(&lower, "chase") {
+    // Header-pattern matching: check the first few lines for known column layouts.
+    // This is more reliable than keyword searches since AMEX CSVs don't contain "amex".
+    let first_lines: String = lower.lines().take(3).collect::<Vec<_>>().join("\n");
+
+    // Discover: headers contain "trans. date" and "post date"
+    if first_lines.contains("trans. date") && first_lines.contains("post date") {
+        return Institution::Discover;
+    }
+
+    // AMEX: headers contain "card member" and "account #"
+    if first_lines.contains("card member") && first_lines.contains("account #") {
+        return Institution::AmericanExpress;
+    }
+
+    // SoFi: headers contain "transaction date" and ",type,"
+    if first_lines.contains("transaction date") && first_lines.contains(",type,") {
+        return Institution::SoFi;
+    }
+
+    // Chase: "Details,Posting Date,Description,Amount"
+    if first_lines.contains("details,posting date,description,amount") {
+        return Institution::Chase;
+    }
+
+    // Fall back to whole-word keyword matching
+    if contains_word(&lower, "chase") {
         Institution::Chase
     } else if lower.contains("bank of america") || contains_word(&lower, "bofa") {
         Institution::BankOfAmerica
@@ -143,6 +179,8 @@ pub fn detect_institution(content: &str) -> Institution {
         Institution::Citi
     } else if lower.contains("capital one") {
         Institution::CapitalOne
+    } else if contains_word(&lower, "sofi") {
+        Institution::SoFi
     } else {
         Institution::Unknown
     }
@@ -192,12 +230,30 @@ impl Institution {
             },
             Institution::AmericanExpress => CsvMapping {
                 date_column: 0,
-                amount_column: 2,
+                amount_column: 4,      // Date,Description,Card Member,Account #,Amount
                 description_column: 1,
                 category_column: None,
                 date_format: "%m/%d/%Y",
                 has_header: true,
                 negate_amounts: true, // AMEX shows expenses as positive
+            },
+            Institution::Discover => CsvMapping {
+                date_column: 0,        // Trans. Date
+                amount_column: 3,      // Amount
+                description_column: 2, // Description
+                category_column: Some(4), // Category
+                date_format: "%m/%d/%Y",
+                has_header: true,
+                negate_amounts: true, // Discover shows expenses as positive
+            },
+            Institution::SoFi => CsvMapping {
+                date_column: 0,        // Transaction Date
+                amount_column: 3,      // Amount
+                description_column: 1, // Description
+                category_column: Some(2), // Type
+                date_format: "%m/%d/%Y",
+                has_header: true,
+                negate_amounts: false, // SoFi already uses correct sign convention
             },
             _ => CsvMapping {
                 // Generic fallback
