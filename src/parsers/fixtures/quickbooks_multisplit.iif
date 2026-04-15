@@ -1,0 +1,43 @@
+!ACCNT	Checking Account
+!TRNS	DEBIT
+!TRNSID	DBT002
+!DATE	03/20/2024
+!ACCNT	Checking Account
+!NAME	Monthly Expense Allocation
+!AMOUNT	-1000.00
+!MEMO	Split expense across categories
+!SPLIT
+!SPLID	1
+!SPLITACCNT	Expenses:Office Supplies
+!SPLITAMT	-600.00
+!SPLITNAME	Office Supplies
+!ENDSPLIT
+!SPLIT
+!SPLID	2
+!SPLITACCNT	Expenses:Travel
+!SPLITAMT	-400.00
+!SPLITNAME	Travel and Meals
+!ENDSPLIT
+!ENDTRNS
+!TRNS	DEBIT
+!TRNSID	DBT003
+!DATE	03/25/2024
+!ACCNT	Checking Account
+!NAME	Quarterly Allocation
+!AMOUNT	-1500.00
+!SPLIT
+!SPLID	1
+!SPLITACCNT	Expenses:Utilities
+!SPLITAMT	-600.00
+!ENDSPLIT
+!SPLIT
+!SPLID	2
+!SPLITACCNT	Expenses:Insurance
+!SPLITAMT	-500.00
+!ENDSPLIT
+!SPLIT
+!SPLID	3
+!SPLITACCNT	Expenses:Rent
+!SPLITAMT	-400.00
+!ENDSPLIT
+!ENDTRNS

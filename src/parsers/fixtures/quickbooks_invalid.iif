@@ -1,0 +1,14 @@
+!ACCNT	Checking Account
+!TRNS	CHECK
+!TRNSID	CHK_BAD_001
+!DATE	13/45/2024
+!ACCNT	Checking Account
+!NAME	Invalid Date
+!AMOUNT	-125.50
+!ENDTRNS
+!TRNS	DEBIT
+!TRNSID	DBT_BAD_001
+!DATE	03/20/2024
+!ACCNT	Checking Account
+!NAME	Missing Amount
+!ENDTRNS
