@@ -187,6 +187,7 @@ pub fn detect_institution(content: &str) -> Institution {
 }
 
 /// Institution-specific CSV column mappings.
+#[derive(Clone)]
 pub struct CsvMapping {
     pub date_column: usize,
     pub amount_column: usize,

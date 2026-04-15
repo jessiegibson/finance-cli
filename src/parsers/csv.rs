@@ -45,7 +45,7 @@ pub fn parse_csv_content(
         .unwrap_or_else(|| detect_institution(content));
 
     result.institution = Some(inst.display_name().to_string());
-    let mapping = inst.csv_mapping();
+    let mut mapping = inst.csv_mapping();
 
     // Parse CSV
     let mut reader = csv::ReaderBuilder::new()
@@ -53,8 +53,18 @@ pub fn parse_csv_content(
         .flexible(true)
         .from_reader(content.as_bytes());
 
-    // Skip header if present
-    if mapping.has_header {
+    // For AMEX, try to detect columns by header names for better robustness
+    if matches!(inst, Institution::AmericanExpress) && mapping.has_header {
+        if let Ok(headers) = reader.headers() {
+            if let Some(updated_mapping) = detect_amex_columns(headers, &mapping) {
+                mapping = updated_mapping;
+            }
+        }
+        // Reset reader since we read headers
+        reader = csv::ReaderBuilder::new()
+            .has_headers(mapping.has_header)
+            .flexible(true)
+            .from_reader(content.as_bytes());
         let _ = reader.headers();
     }
 
@@ -73,6 +83,50 @@ pub fn parse_csv_content(
     }
 
     Ok(result)
+}
+
+/// For AMEX CSVs, detect column positions by header names for flexibility
+fn detect_amex_columns(headers: &csv::StringRecord, base_mapping: &super::detect::CsvMapping) -> Option<super::detect::CsvMapping> {
+    let headers_lower: Vec<String> = headers
+        .iter()
+        .map(|h| h.trim().to_lowercase())
+        .collect();
+
+    let mut new_mapping = base_mapping.clone();
+
+    // Find Date column (could be "Date" or "Transaction Date")
+    for (idx, header) in headers_lower.iter().enumerate() {
+        if header.contains("date") && !header.contains("posting") {
+            new_mapping.date_column = idx;
+            break;
+        }
+    }
+
+    // Find Amount column
+    for (idx, header) in headers_lower.iter().enumerate() {
+        if header == "amount" {
+            new_mapping.amount_column = idx;
+            break;
+        }
+    }
+
+    // Find Description column
+    for (idx, header) in headers_lower.iter().enumerate() {
+        if header == "description" {
+            new_mapping.description_column = idx;
+            break;
+        }
+    }
+
+    // Find Category column if it exists
+    for (idx, header) in headers_lower.iter().enumerate() {
+        if header == "category" {
+            new_mapping.category_column = Some(idx);
+            break;
+        }
+    }
+
+    Some(new_mapping)
 }
 
 /// Parse a single CSV row into a Transaction.
