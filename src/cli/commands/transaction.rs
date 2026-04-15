@@ -64,6 +64,25 @@ pub enum TransactionAction {
         limit: usize,
     },
 
+    /// Apply rules to all uncategorized transactions in bulk
+    BulkCategorize {
+        /// Only show what would change, don't apply
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Also re-categorize transactions that already have a category
+        #[arg(long)]
+        recategorize: bool,
+
+        /// Filter by year
+        #[arg(short, long)]
+        year: Option<i32>,
+
+        /// Filter by month (1-12)
+        #[arg(short, long)]
+        month: Option<u32>,
+    },
+
     /// Search transactions
     Search {
         /// Search query
@@ -88,6 +107,13 @@ pub fn handle_transaction(cmd: TransactionCommand, _config: &Config, conn: &Conn
         } => handle_list(limit, uncategorized, year, month, conn),
 
         TransactionAction::Categorize { limit } => handle_categorize(limit, conn),
+
+        TransactionAction::BulkCategorize {
+            dry_run,
+            recategorize,
+            year,
+            month,
+        } => handle_bulk_categorize(dry_run, recategorize, year, month, conn),
 
         TransactionAction::Search { query } => {
             println!("{}", "Search Transactions".bold());
@@ -521,4 +547,180 @@ fn handle_categorize(limit: usize, conn: &Connection) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_bulk_categorize(
+    dry_run: bool,
+    recategorize: bool,
+    year: Option<i32>,
+    month: Option<u32>,
+    conn: &Connection,
+) -> Result<()> {
+    output::header("Bulk Categorize");
+
+    let tx_repo = TransactionRepository::new(conn);
+    let engine = CategorizationEngine::from_database(conn)?;
+
+    let rules = engine.rules();
+    if rules.is_empty() {
+        output::warning("No categorization rules found.");
+        output::info("Create rules with `finance tx categorize` first, then re-run bulk.");
+        return Ok(());
+    }
+    output::kv("Active rules", &rules.len().to_string());
+
+    // Fetch target transactions
+    let transactions = if recategorize {
+        match (year, month) {
+            (Some(y), Some(m)) => {
+                let range = DateRange::month(y, m).ok_or_else(|| {
+                    Error::InvalidInput(format!("Invalid year/month: {}/{}", y, m))
+                })?;
+                tx_repo.find_by_date_range(&range)?
+            }
+            (Some(y), None) => {
+                let range = DateRange::year(y).ok_or_else(|| {
+                    Error::InvalidInput(format!("Invalid year: {}", y))
+                })?;
+                tx_repo.find_by_date_range(&range)?
+            }
+            _ => tx_repo.find_all()?,
+        }
+    } else {
+        // Uncategorized only — fetch all then filter by date if needed
+        match (year, month) {
+            (Some(y), Some(m)) => {
+                let range = DateRange::month(y, m).ok_or_else(|| {
+                    Error::InvalidInput(format!("Invalid year/month: {}/{}", y, m))
+                })?;
+                let all = tx_repo.find_by_date_range(&range)?;
+                all.into_iter().filter(|tx| !tx.is_categorized()).collect()
+            }
+            (Some(y), None) => {
+                let range = DateRange::year(y).ok_or_else(|| {
+                    Error::InvalidInput(format!("Invalid year: {}", y))
+                })?;
+                let all = tx_repo.find_by_date_range(&range)?;
+                all.into_iter().filter(|tx| !tx.is_categorized()).collect()
+            }
+            _ => {
+                // No date filter — use the dedicated uncategorized query (no limit)
+                tx_repo.find_uncategorized(usize::MAX)?
+            }
+        }
+    };
+
+    if transactions.is_empty() {
+        if recategorize {
+            output::info("No transactions found for the specified period.");
+        } else {
+            output::info("No uncategorized transactions found.");
+        }
+        return Ok(());
+    }
+
+    output::kv("Transactions to process", &transactions.len().to_string());
+    if recategorize {
+        output::warning("--recategorize: will overwrite existing categories where rules match");
+    }
+    if dry_run {
+        output::warning("Dry run — no changes will be saved");
+    }
+    println!();
+
+    // Run categorization engine on all transactions
+    let results = engine.categorize_batch(&transactions);
+
+    let mut matched = 0usize;
+    let mut no_match = 0usize;
+    let mut changed = 0usize;
+
+    for result in &results {
+        let category = match result.category {
+            Some(ref cat) => cat,
+            None => {
+                no_match += 1;
+                continue;
+            }
+        };
+
+        matched += 1;
+
+        // Find the original transaction to check current state
+        let tx = match transactions.iter().find(|t| t.id == result.transaction_id) {
+            Some(t) => t,
+            None => continue,
+        };
+        let already_same = tx.category_id == Some(category.id);
+
+        if already_same {
+            continue;
+        }
+
+        changed += 1;
+
+        if dry_run {
+            let rule_name = result
+                .matched_rule
+                .as_ref()
+                .map(|r| r.name.as_str())
+                .unwrap_or("?");
+            println!(
+                "  {} {} → {} {}",
+                tx.transaction_date.to_string().dimmed(),
+                truncate_str(&tx.description, 35),
+                category.name.green(),
+                format!("(rule: {})", rule_name).dimmed(),
+            );
+        } else {
+            tx_repo.update_category_with_method(
+                result.transaction_id,
+                category.id,
+                result.confidence,
+                "rule",
+            )?;
+        }
+    }
+
+    // Summary
+    println!();
+    println!("{}", "─".repeat(55).dimmed());
+    if dry_run {
+        println!(
+            "  {} matched rules, {} would be {}categorized, {} no match",
+            matched.to_string().cyan(),
+            changed.to_string().green().bold(),
+            if recategorize { "re-" } else { "" },
+            no_match.to_string().dimmed(),
+        );
+        println!();
+        output::info("Run without --dry-run to apply changes.");
+    } else {
+        println!(
+            "  {} matched rules, {} {}categorized, {} no match",
+            matched.to_string().cyan(),
+            changed.to_string().green().bold(),
+            if recategorize { "re-" } else { "" },
+            no_match.to_string().dimmed(),
+        );
+        if no_match > 0 {
+            println!();
+            output::info(&format!(
+                "{} transactions still uncategorized. Use `finance tx categorize` for manual review.",
+                no_match
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Truncate a string for display.
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        let end = s.char_indices().nth(max - 1).map(|(i, _)| i).unwrap_or(max - 1);
+        format!("{}…", &s[..end])
+    } else {
+        s.to_string()
+    }
 }

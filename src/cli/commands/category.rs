@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::database::{CategoryRepository, Connection, RuleRepository};
 use crate::error::Result;
-use crate::models::{ConditionField, LogicalOperator, RuleOperator};
+use crate::models::{Category, CategoryType, ConditionField, LogicalOperator, RuleOperator};
 use clap::{Args, Subcommand};
 use colored::Colorize;
 
@@ -110,17 +110,51 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
             category_type,
             schedule_c,
         } => {
-            println!("{}", "Create Category".bold());
-            println!();
-            println!("Name: {}", name);
-            println!("Type: {}", category_type);
-            if let Some(ref sc) = schedule_c {
-                println!("Schedule C: {}", sc);
+            let repo = CategoryRepository::new(conn);
+
+            // Check for duplicate name
+            if let Some(existing) = repo.find_by_name(&name)? {
+                println!(
+                    "{} Category '{}' already exists (type: {:?}).",
+                    "Error:".red().bold(),
+                    existing.name,
+                    existing.category_type
+                );
+                return Ok(());
             }
 
-            // TODO: Implement actual category creation
-            println!();
-            println!("{}", "Category creation coming soon!".yellow());
+            // Parse category type
+            let cat_type = match category_type.to_lowercase().as_str() {
+                "income" => CategoryType::Income,
+                "expense" => CategoryType::Expense,
+                "personal" => CategoryType::Personal,
+                other => {
+                    println!(
+                        "{} Unknown category type '{}'. Use: income, expense, personal.",
+                        "Error:".red().bold(),
+                        other
+                    );
+                    return Ok(());
+                }
+            };
+
+            // Build category
+            let mut category = Category::new(&name, cat_type);
+            if let Some(ref sc) = schedule_c {
+                category = category.with_schedule_c(sc);
+            }
+
+            repo.insert(&category)?;
+
+            println!("{}", "Category created".green().bold());
+            println!("  Name: {}", name);
+            println!("  Type: {}", category_type);
+            if let Some(ref sc) = schedule_c {
+                println!("  Schedule C: {}", sc);
+            }
+            if category.is_tax_deductible {
+                println!("  Tax deductible: {}", "yes".green());
+            }
         }
 
         CategoryAction::Rules { category } => {

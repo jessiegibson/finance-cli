@@ -39,6 +39,7 @@ pub fn parse_csv_content(
             "discover" => Institution::Discover,
             "citi" | "citibank" => Institution::Citi,
             "capital_one" => Institution::CapitalOne,
+            "sofi" => Institution::SoFi,
             _ => detect_institution(content),
         })
         .unwrap_or_else(|| detect_institution(content));

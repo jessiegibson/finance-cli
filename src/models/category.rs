@@ -199,13 +199,131 @@ pub fn default_categories() -> Vec<Category> {
             .with_schedule_c("L27a")
             .with_description("Other deductible business expenses")
             .with_sort_order(22),
+        // --- Schedule A: Itemized Deductions ---
+        // Medical & Dental (Line 1)
+        Category::expense("Medical & Dental Expenses")
+            .with_schedule_c("A-1")
+            .with_description("Medical, dental, vision, prescriptions, health insurance premiums")
+            .with_sort_order(30),
+        // State & Local Income Taxes (Line 5a)
+        Category::expense("State & Local Income Tax")
+            .with_schedule_c("A-5a")
+            .with_description("State and local income tax payments, estimated tax payments")
+            .with_sort_order(31),
+        // State & Local Personal Property Taxes (Line 5b)
+        Category::expense("Personal Property Tax")
+            .with_schedule_c("A-5b")
+            .with_description("Vehicle registration fees, personal property taxes")
+            .with_sort_order(32),
+        // Real Estate Taxes (Line 5c)
+        Category::expense("Real Estate Tax")
+            .with_schedule_c("A-5c")
+            .with_description("Property taxes on primary residence and other personal real estate")
+            .with_sort_order(33),
+        // Home Mortgage Interest (Line 8a)
+        Category::expense("Home Mortgage Interest")
+            .with_schedule_c("A-8a")
+            .with_description("Mortgage interest paid to financial institutions (Form 1098)")
+            .with_sort_order(34),
+        // Mortgage Insurance Premiums (Line 10)
+        Category::expense("Mortgage Insurance Premiums")
+            .with_schedule_c("A-10")
+            .with_description("PMI or MIP premiums on qualified residence")
+            .with_sort_order(35),
+        // Charitable - Cash (Line 12)
+        Category::expense("Charitable Donations - Cash")
+            .with_schedule_c("A-12")
+            .with_description("Cash or check donations to qualified organizations")
+            .with_sort_order(36),
+        // Charitable - Non-Cash (Line 13)
+        Category::expense("Charitable Donations - Non-Cash")
+            .with_schedule_c("A-13")
+            .with_description("Donated goods, clothing, vehicles to qualified organizations")
+            .with_sort_order(37),
+        // Casualty & Theft Losses (Line 15)
+        Category::expense("Casualty & Theft Losses")
+            .with_schedule_c("A-15")
+            .with_description("Federally declared disaster area losses only")
+            .with_sort_order(38),
+        // Other Itemized Deductions (Line 16)
+        Category::expense("Other Itemized Deductions")
+            .with_schedule_c("A-16")
+            .with_description("Gambling losses, impairment-related work expenses, estate tax on IRD")
+            .with_sort_order(39),
+
+        // --- Schedule E, Part I: Rental Real Estate Income ---
+        Category::income("Rental Income")
+            .with_schedule_c("E-3")
+            .with_description("Rents received from tenants")
+            .with_sort_order(40),
+        Category::expense("Rental - Advertising")
+            .with_schedule_c("E-5")
+            .with_description("Advertising for rental property vacancies")
+            .with_sort_order(41),
+        Category::expense("Rental - Auto & Travel")
+            .with_schedule_c("E-6")
+            .with_description("Travel to rental properties for maintenance and management")
+            .with_sort_order(42),
+        Category::expense("Rental - Cleaning & Maintenance")
+            .with_schedule_c("E-7")
+            .with_description("Cleaning, landscaping, pest control, general maintenance")
+            .with_sort_order(43),
+        Category::expense("Rental - Commissions")
+            .with_schedule_c("E-8")
+            .with_description("Property management fees, leasing commissions")
+            .with_sort_order(44),
+        Category::expense("Rental - Insurance")
+            .with_schedule_c("E-9")
+            .with_description("Landlord insurance, liability, flood, umbrella policies")
+            .with_sort_order(45),
+        Category::expense("Rental - Legal & Professional")
+            .with_schedule_c("E-10")
+            .with_description("Attorney fees, CPA fees, eviction costs for rental properties")
+            .with_sort_order(46),
+        Category::expense("Rental - Management Fees")
+            .with_schedule_c("E-11")
+            .with_description("Property management company fees")
+            .with_sort_order(47),
+        Category::expense("Rental - Mortgage Interest")
+            .with_schedule_c("E-12")
+            .with_description("Mortgage interest on rental properties")
+            .with_sort_order(48),
+        Category::expense("Rental - Other Interest")
+            .with_schedule_c("E-13")
+            .with_description("Other interest expenses related to rental properties")
+            .with_sort_order(49),
+        Category::expense("Rental - Repairs")
+            .with_schedule_c("E-14")
+            .with_description("Repairs to rental properties (not improvements)")
+            .with_sort_order(50),
+        Category::expense("Rental - Supplies")
+            .with_schedule_c("E-15")
+            .with_description("Supplies used for rental property maintenance")
+            .with_sort_order(51),
+        Category::expense("Rental - Taxes")
+            .with_schedule_c("E-16")
+            .with_description("Property taxes on rental properties")
+            .with_sort_order(52),
+        Category::expense("Rental - Utilities")
+            .with_schedule_c("E-17")
+            .with_description("Utilities paid by landlord for rental properties")
+            .with_sort_order(53),
+        Category::expense("Rental - Depreciation")
+            .with_schedule_c("E-18")
+            .with_description("Depreciation of rental property and improvements")
+            .with_sort_order(54),
+        Category::expense("Rental - Other Expenses")
+            .with_schedule_c("E-19")
+            .with_description("Other rental property expenses not listed above")
+            .with_sort_order(55),
+
         // Personal categories
         Category::personal("Personal")
             .with_description("Personal non-business expenses")
-            .with_sort_order(50),
+            .with_sort_order(80),
         Category::personal("Transfer")
             .with_description("Transfers between accounts")
-            .with_sort_order(51),
+            .with_sort_order(81),
         Category::personal("Uncategorized")
             .with_description("Transactions not yet categorized")
             .with_sort_order(99),

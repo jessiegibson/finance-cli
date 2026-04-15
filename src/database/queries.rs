@@ -305,6 +305,26 @@ impl<'a> TransactionRepository<'a> {
         Ok(())
     }
 
+    /// Update category with a specific categorized_by method.
+    pub fn update_category_with_method(
+        &self,
+        transaction_id: Uuid,
+        category_id: Uuid,
+        confidence: f64,
+        method: &str,
+    ) -> Result<()> {
+        let sql = format!(
+            "UPDATE transactions SET category_id = '{}', categorized_by = '{}', \
+             confidence_score = {}, updated_at = CURRENT_TIMESTAMP WHERE id = '{}'",
+            category_id,
+            method.replace('\'', "''"),
+            confidence,
+            transaction_id
+        );
+        self.conn.execute(&sql)?;
+        Ok(())
+    }
+
     /// Count uncategorized transactions.
     pub fn count_uncategorized(&self) -> Result<i64> {
         let result: Option<i64> = self.conn.query_row(

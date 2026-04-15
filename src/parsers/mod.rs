@@ -1,7 +1,7 @@
 //! Transaction file parsing module.
 //!
 //! This module handles parsing transaction files from various banks and formats.
-//! Supported formats: CSV, QFX/OFX.
+//! Supported formats: CSV, QFX/OFX, IIF (QuickBooks).
 //!
 //! Supported institutions:
 //! - Chase
@@ -12,9 +12,11 @@
 //! - Discover
 //! - Citi
 //! - Capital One
+//! - SoFi
 
 pub mod csv;
 pub mod detect;
+pub mod iif;
 pub mod qfx;
 
 pub use detect::{detect_format, detect_institution, FileFormat};
@@ -68,6 +70,7 @@ pub fn parse_file(path: &Path, account: &Account) -> Result<ParseResult> {
     match format {
         FileFormat::Csv => csv::parse_csv_file(path, account),
         FileFormat::Qfx | FileFormat::Ofx => qfx::parse_qfx_file(path, account),
+        FileFormat::Iif => iif::parse_iif_file(path, account),
         FileFormat::Unknown => Err(crate::error::Error::Parse(ParseError::UnknownFormat)),
     }
 }
