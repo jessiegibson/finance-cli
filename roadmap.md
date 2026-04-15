@@ -1,7 +1,7 @@
 # Finance CLI Roadmap
 
-Last updated: 2026-04-14 17:24 EDT
-Last updated by: Jessie Gibson
+Last updated: 2026-04-14 17:33 EDT
+Last updated by: Claude
 
 Use this file to track the overall development of the Finance CLI application. Move items between sections as work progresses. Keep entries short, link to issues or PRs where possible, and record completion dates.
 
@@ -61,7 +61,11 @@ A privacy-first personal finance CLI for freelancers and small business owners. 
 - [x] Profit and Loss report with per-category breakdown
 - [x] Cash flow report grouped by period
 - [x] Schedule C tax report command surface
-- [x] Table, CSV, and JSON output formats for reports
+- [x] Table, CSV, and JSON output formats for reports with --output file support (2026-04-14)
+  - [x] P&L with CSV/JSON export and --output flag
+  - [x] Cash Flow with CSV/JSON export and --output flag
+  - [x] Schedule A/C/E with CSV/JSON export and --output flag
+  - [x] Summary with CSV/JSON export and --output flag
 
 ### Testing and quality
 - [x] Embedded unit tests across 23+ modules

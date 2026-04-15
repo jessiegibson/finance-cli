@@ -16,7 +16,6 @@ use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::path::Path;
 use std::str::FromStr;
-use uuid::Uuid;
 
 /// Parse an IIF file.
 pub fn parse_iif_file(path: &Path, account: &Account) -> Result<super::ParseResult> {

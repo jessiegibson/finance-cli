@@ -10,6 +10,7 @@ use crate::error::Result;
 use crate::models::{DateRange, Money};
 use clap::{Args, Subcommand, ValueEnum};
 use std::collections::HashMap;
+use serde_json::json;
 
 #[derive(Args, Debug)]
 pub struct ReportCommand {
@@ -43,6 +44,10 @@ pub enum ReportAction {
         /// Output format
         #[arg(short, long, default_value = "table")]
         format: OutputFormat,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
     },
 
     /// Generate Schedule C summary (self-employment)
@@ -54,6 +59,10 @@ pub enum ReportAction {
         /// Output format
         #[arg(short, long, default_value = "table")]
         format: OutputFormat,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
     },
 
     /// Generate Schedule A summary (itemized deductions)
@@ -65,6 +74,10 @@ pub enum ReportAction {
         /// Output format
         #[arg(short, long, default_value = "table")]
         format: OutputFormat,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
     },
 
     /// Generate Schedule E summary (rental real estate income)
@@ -76,6 +89,10 @@ pub enum ReportAction {
         /// Output format
         #[arg(short, long, default_value = "table")]
         format: OutputFormat,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
     },
 
     /// Compare tax data across years (cross-check returns)
@@ -94,6 +111,14 @@ pub enum ReportAction {
         /// Year for the report
         #[arg(short, long)]
         year: Option<i32>,
+
+        /// Output format
+        #[arg(short, long, default_value = "table")]
+        format: OutputFormat,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
     },
 }
 
@@ -106,47 +131,87 @@ pub enum OutputFormat {
 }
 
 pub fn handle_report(cmd: ReportCommand, _config: &Config, conn: &Connection) -> Result<()> {
-    use colored::Colorize;
-
     match cmd.action {
-        ReportAction::Pnl { year, format: _, output: _ } => {
+        ReportAction::Pnl { year, format, output } => {
             let year = year.unwrap_or_else(|| chrono::Utc::now().year());
-            handle_pnl(conn, year)
+            handle_pnl(conn, year, format, output)
         }
 
-        ReportAction::Cashflow { year, format: _ } => {
+        ReportAction::Cashflow { year, format, output } => {
             let year = year.unwrap_or_else(|| chrono::Utc::now().year());
-            handle_cashflow(conn, year)
+            handle_cashflow(conn, year, format, output)
         }
 
-        ReportAction::ScheduleC { year, format: _ } => {
-            handle_schedule_report(conn, year, "C", "Schedule C - Self-Employment")
+        ReportAction::ScheduleC { year, format, output } => {
+            handle_schedule_report(conn, year, "C", "Schedule C - Self-Employment", format, output)
         }
 
-        ReportAction::ScheduleA { year, format: _ } => {
-            handle_schedule_report(conn, year, "A", "Schedule A - Itemized Deductions")
+        ReportAction::ScheduleA { year, format, output } => {
+            handle_schedule_report(conn, year, "A", "Schedule A - Itemized Deductions", format, output)
         }
 
-        ReportAction::ScheduleE { year, format: _ } => {
-            handle_schedule_report(conn, year, "E", "Schedule E - Rental Real Estate")
+        ReportAction::ScheduleE { year, format, output } => {
+            handle_schedule_report(conn, year, "E", "Schedule E - Rental Real Estate", format, output)
         }
 
         ReportAction::TaxCompare { years, schedule } => {
             handle_tax_compare(conn, &years, &schedule)
         }
 
-        ReportAction::Summary { year } => {
+        ReportAction::Summary { year, format, output } => {
             let year = year.unwrap_or_else(|| chrono::Utc::now().year());
-            handle_summary(conn, year)
+            handle_summary(conn, year, format, output)
         }
     }
 }
 
 use chrono::Datelike;
+use std::path::PathBuf;
+use crate::cli::output;
+
+// ─── CSV/JSON Export Helpers ──────────────────────────────────
+
+/// Write rows to CSV — file if output path given, stdout otherwise.
+fn write_csv(headers: &[&str], rows: Vec<Vec<String>>, output: Option<&PathBuf>) -> Result<()> {
+    let mut wtr = csv::Writer::from_writer(vec![]);
+    wtr.write_record(headers)
+        .map_err(|e| crate::error::Error::Report(e.to_string()))?;
+    for row in rows {
+        wtr.write_record(&row)
+            .map_err(|e| crate::error::Error::Report(e.to_string()))?;
+    }
+    let data = wtr.into_inner()
+        .map_err(|e| crate::error::Error::Report(e.to_string()))?;
+
+    match output {
+        Some(path) => {
+            std::fs::write(path, &data)
+                .map_err(|e| crate::error::Error::Io { path: path.clone(), source: e })?;
+            output::success(&format!("Saved to {}", path.display()));
+        }
+        None => print!("{}", String::from_utf8_lossy(&data)),
+    }
+    Ok(())
+}
+
+/// Write JSON — file if output path given, stdout otherwise.
+fn write_json(value: serde_json::Value, output: Option<&PathBuf>) -> Result<()> {
+    let data = serde_json::to_string_pretty(&value)
+        .map_err(|e| crate::error::Error::Report(e.to_string()))?;
+    match output {
+        Some(path) => {
+            std::fs::write(path, &data)
+                .map_err(|e| crate::error::Error::Io { path: path.clone(), source: e })?;
+            output::success(&format!("Saved to {}", path.display()));
+        }
+        None => println!("{}", data),
+    }
+    Ok(())
+}
 
 // ─── P&L Report ───────────────────────────────────────────────
 
-fn handle_pnl(conn: &Connection, year: i32) -> Result<()> {
+fn handle_pnl(conn: &Connection, year: i32, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     use colored::Colorize;
 
     let date_range = DateRange::year(year)
@@ -164,8 +229,10 @@ fn handle_pnl(conn: &Connection, year: i32) -> Result<()> {
 
     let report = PnLReport::generate(&transactions, &categories, date_range);
 
-    println!("{}", format!("═══ Profit & Loss Report - {} ═══", year).bold());
-    println!();
+    match format {
+        OutputFormat::Table => {
+            println!("{}", format!("═══ Profit & Loss Report - {} ═══", year).bold());
+            println!();
 
     // Income section
     println!("{}", "INCOME".green().bold());
@@ -221,22 +288,88 @@ fn handle_pnl(conn: &Connection, year: i32) -> Result<()> {
         );
     }
 
-    // Warn about uncategorized
-    let uncategorized_count = transactions.iter().filter(|t| t.category_id.is_none()).count();
-    if uncategorized_count > 0 {
-        println!();
-        println!(
-            "{}",
-            format!(
-                "Warning: {} transactions are uncategorized and excluded from this report.",
-                uncategorized_count
-            )
-            .yellow()
-        );
-        println!(
-            "{}",
-            "Run 'finance transaction categorize' to assign categories.".yellow()
-        );
+            // Warn about uncategorized
+            let uncategorized_count = transactions.iter().filter(|t| t.category_id.is_none()).count();
+            if uncategorized_count > 0 {
+                println!();
+                println!(
+                    "{}",
+                    format!(
+                        "Warning: {} transactions are uncategorized and excluded from this report.",
+                        uncategorized_count
+                    )
+                    .yellow()
+                );
+                println!(
+                    "{}",
+                    "Run 'finance transaction categorize' to assign categories.".yellow()
+                );
+            }
+        }
+        OutputFormat::Csv => {
+            let headers = vec!["type", "category", "schedule_line", "amount", "transaction_count"];
+            let mut rows = Vec::new();
+
+            for item in report.income_sorted() {
+                rows.push(vec![
+                    "income".to_string(),
+                    item.category_name.clone(),
+                    "".to_string(),
+                    format!("{}", item.total),
+                    item.transaction_count.to_string(),
+                ]);
+            }
+
+            for item in report.expenses_sorted() {
+                rows.push(vec![
+                    "expense".to_string(),
+                    item.category_name.clone(),
+                    "".to_string(),
+                    format!("{}", item.total),
+                    item.transaction_count.to_string(),
+                ]);
+            }
+
+            rows.push(vec![
+                "net".to_string(),
+                "".to_string(),
+                "".to_string(),
+                format!("{}", report.net_profit),
+                "".to_string(),
+            ]);
+
+            write_csv(&headers, rows, output.as_ref())?;
+        }
+        OutputFormat::Json => {
+            let income_items: Vec<_> = report.income_sorted()
+                .iter()
+                .map(|item| json!({
+                    "category": &item.category_name,
+                    "amount": item.total.to_string(),
+                    "transactions": item.transaction_count
+                }))
+                .collect();
+
+            let expense_items: Vec<_> = report.expenses_sorted()
+                .iter()
+                .map(|item| json!({
+                    "category": &item.category_name,
+                    "amount": item.total.to_string(),
+                    "transactions": item.transaction_count
+                }))
+                .collect();
+
+            let json_output = json!({
+                "period": year.to_string(),
+                "total_income": report.total_income.to_string(),
+                "total_expenses": report.total_expenses.to_string(),
+                "net_profit": report.net_profit.to_string(),
+                "income": income_items,
+                "expenses": expense_items
+            });
+
+            write_json(json_output, output.as_ref())?;
+        }
     }
 
     Ok(())
@@ -244,7 +377,7 @@ fn handle_pnl(conn: &Connection, year: i32) -> Result<()> {
 
 // ─── Cash Flow Report ─────────────────────────────────────────
 
-fn handle_cashflow(conn: &Connection, year: i32) -> Result<()> {
+fn handle_cashflow(conn: &Connection, year: i32, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     use colored::Colorize;
 
     let date_range = DateRange::year(year)
@@ -261,8 +394,10 @@ fn handle_cashflow(conn: &Connection, year: i32) -> Result<()> {
     let report = CashFlowReport::generate(&transactions, date_range);
     let monthly = report.monthly_summary();
 
-    println!("{}", format!("═══ Cash Flow Report - {} ═══", year).bold());
-    println!();
+    match format {
+        OutputFormat::Table => {
+            println!("{}", format!("═══ Cash Flow Report - {} ═══", year).bold());
+            println!();
 
     let months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -296,20 +431,75 @@ fn handle_cashflow(conn: &Connection, year: i32) -> Result<()> {
         }
     }
 
-    println!("  {}", "─".repeat(52));
-    let net_str = format!("{}", report.net_cash_flow);
-    let net_colored = if report.net_cash_flow.is_income() {
-        net_str.green()
-    } else {
-        net_str.red()
-    };
-    println!(
-        "  {:<8} {:>14} {:>14} {:>14}",
-        "Total".bold(),
-        format!("{}", report.total_inflows).green().bold(),
-        format!("{}", report.total_outflows).red().bold(),
-        net_colored.bold()
-    );
+            println!("  {}", "─".repeat(52));
+            let net_str = format!("{}", report.net_cash_flow);
+            let net_colored = if report.net_cash_flow.is_income() {
+                net_str.green()
+            } else {
+                net_str.red()
+            };
+            println!(
+                "  {:<8} {:>14} {:>14} {:>14}",
+                "Total".bold(),
+                format!("{}", report.total_inflows).green().bold(),
+                format!("{}", report.total_outflows).red().bold(),
+                net_colored.bold()
+            );
+        }
+        OutputFormat::Csv => {
+            let headers = vec!["year", "month", "month_name", "inflows", "outflows", "net"];
+            let mut rows = Vec::new();
+            let months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December",
+            ];
+
+            for month_num in 1..=12u32 {
+                if let Some(m) = monthly.get(&(year, month_num)) {
+                    rows.push(vec![
+                        year.to_string(),
+                        month_num.to_string(),
+                        months[(month_num - 1) as usize].to_string(),
+                        format!("{}", m.inflows),
+                        format!("{}", m.outflows),
+                        format!("{}", m.net),
+                    ]);
+                }
+            }
+
+            write_csv(&headers, rows, output.as_ref())?;
+        }
+        OutputFormat::Json => {
+            let months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December",
+            ];
+            let mut monthly_items = Vec::new();
+
+            for month_num in 1..=12u32 {
+                if let Some(m) = monthly.get(&(year, month_num)) {
+                    monthly_items.push(json!({
+                        "year": year,
+                        "month": month_num,
+                        "month_name": months[(month_num - 1) as usize],
+                        "inflows": m.inflows.to_string(),
+                        "outflows": m.outflows.to_string(),
+                        "net": m.net.to_string()
+                    }));
+                }
+            }
+
+            let json_output = json!({
+                "period": year.to_string(),
+                "total_inflows": report.total_inflows.to_string(),
+                "total_outflows": report.total_outflows.to_string(),
+                "net_cash_flow": report.net_cash_flow.to_string(),
+                "monthly": monthly_items
+            });
+
+            write_json(json_output, output.as_ref())?;
+        }
+    }
 
     Ok(())
 }
@@ -368,7 +558,7 @@ fn schedule_line_labels(schedule: &str) -> Vec<(&'static str, &'static str)> {
     }
 }
 
-fn handle_schedule_report(conn: &Connection, year: i32, schedule: &str, title: &str) -> Result<()> {
+fn handle_schedule_report(conn: &Connection, year: i32, schedule: &str, title: &str, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     use colored::Colorize;
 
     let date_range = DateRange::year(year)
@@ -447,27 +637,29 @@ fn handle_schedule_report(conn: &Connection, year: i32, schedule: &str, title: &
         }
     }
 
-    println!(
-        "{}",
-        format!("═══ {} - Tax Year {} ═══", title, year).bold()
-    );
-    println!();
-
     let labels = schedule_line_labels(schedule);
-    let mut grand_total = Money::zero();
-    let mut income_total = Money::zero();
-    let mut expense_total = Money::zero();
 
-    println!(
-        "  {:<8} {:<40} {:>12} {:>6}",
-        "Line".bold(),
-        "Description".bold(),
-        "Amount".bold(),
-        "Txns".bold()
-    );
-    println!("  {}", "─".repeat(68));
+    match format {
+        OutputFormat::Table => {
+            println!(
+                "{}",
+                format!("═══ {} - Tax Year {} ═══", title, year).bold()
+            );
+            println!();
+            let mut grand_total = Money::zero();
+            let mut income_total = Money::zero();
+            let mut expense_total = Money::zero();
 
-    for (line_code, description) in &labels {
+            println!(
+                "  {:<8} {:<40} {:>12} {:>6}",
+                "Line".bold(),
+                "Description".bold(),
+                "Amount".bold(),
+                "Txns".bold()
+            );
+            println!("  {}", "─".repeat(68));
+
+            for (line_code, description) in &labels {
         let (amount, count) = line_totals
             .get(*line_code)
             .copied()
@@ -480,110 +672,161 @@ fn handle_schedule_report(conn: &Connection, year: i32, schedule: &str, title: &
         }
         grand_total += amount;
 
-        let amount_str = if count > 0 {
-            let s = format!("{}", amount);
-            if amount.is_income() {
-                s.green().to_string()
-            } else {
-                s.red().to_string()
+                let amount_str = if count > 0 {
+                    let s = format!("{}", amount);
+                    if amount.is_income() {
+                        s.green().to_string()
+                    } else {
+                        s.red().to_string()
+                    }
+                } else {
+                    "$0.00".dimmed().to_string()
+                };
+
+                // Extract the line number for display
+                let display_line = if schedule == "C" {
+                    line_code.to_string()
+                } else {
+                    line_code.replace(&format!("{}-", schedule), "L")
+                };
+
+                println!(
+                    "  {:<8} {:<40} {:>12} {:>6}",
+                    display_line,
+                    description,
+                    amount_str,
+                    if count > 0 {
+                        count.to_string()
+                    } else {
+                        "-".dimmed().to_string()
+                    }
+                );
             }
-        } else {
-            "$0.00".dimmed().to_string()
-        };
 
-        // Extract the line number for display
-        let display_line = if schedule == "C" {
-            line_code.to_string()
-        } else {
-            line_code.replace(&format!("{}-", schedule), "L")
-        };
+            println!("  {}", "─".repeat(68));
 
-        println!(
-            "  {:<8} {:<40} {:>12} {:>6}",
-            display_line,
-            description,
-            amount_str,
-            if count > 0 {
-                count.to_string()
-            } else {
-                "-".dimmed().to_string()
+            // Print totals based on schedule type
+            match schedule {
+                "E" => {
+                    println!(
+                        "  {:<49} {:>12}",
+                        "Total Rental Income".bold(),
+                        format!("{}", income_total).green().bold()
+                    );
+                    println!(
+                        "  {:<49} {:>12}",
+                        "Total Rental Expenses".bold(),
+                        format!("{}", expense_total).red().bold()
+                    );
+                    let net = income_total + expense_total;
+                    let label = if net.is_income() {
+                        "Net Rental Income"
+                    } else {
+                        "Net Rental Loss"
+                    };
+                    let net_str = format!("{}", net);
+                    let colored = if net.is_income() {
+                        net_str.green().bold()
+                    } else {
+                        net_str.red().bold()
+                    };
+                    println!("  {:<49} {:>12}", label.bold(), colored);
+                }
+                "A" => {
+                    println!(
+                        "  {:<49} {:>12}",
+                        "Total Itemized Deductions".bold(),
+                        format!("{}", expense_total.abs()).bold()
+                    );
+                    println!();
+                    println!(
+                        "{}",
+                        "Note: Medical expenses are subject to 7.5% AGI floor.".dimmed()
+                    );
+                    println!(
+                        "{}",
+                        "State/local taxes are capped at $10,000 (SALT cap).".dimmed()
+                    );
+                }
+                _ => {
+                    println!(
+                        "  {:<49} {:>12}",
+                        "Total".bold(),
+                        format!("{}", grand_total).bold()
+                    );
+                }
             }
-        );
-    }
 
-    println!("  {}", "─".repeat(68));
+            // Show uncategorized warning
+            let uncategorized = transactions
+                .iter()
+                .filter(|t| t.category_id.is_none() && t.schedule_c_line.is_none())
+                .count();
+            if uncategorized > 0 {
+                println!();
+                println!(
+                    "{}",
+                    format!(
+                        "Warning: {} transactions are uncategorized. Some deductions are likely missing.",
+                        uncategorized
+                    )
+                    .yellow()
+                );
+                println!(
+                    "{}",
+                    "Run 'finance transaction categorize' to assign categories.".yellow()
+                );
+            }
+        }
+        OutputFormat::Csv => {
+            let headers = vec!["line", "description", "amount", "transaction_count"];
+            let mut rows = Vec::new();
 
-    // Print totals based on schedule type
-    match schedule {
-        "E" => {
-            println!(
-                "  {:<49} {:>12}",
-                "Total Rental Income".bold(),
-                format!("{}", income_total).green().bold()
-            );
-            println!(
-                "  {:<49} {:>12}",
-                "Total Rental Expenses".bold(),
-                format!("{}", expense_total).red().bold()
-            );
-            let net = income_total + expense_total;
-            let label = if net.is_income() {
-                "Net Rental Income"
-            } else {
-                "Net Rental Loss"
-            };
-            let net_str = format!("{}", net);
-            let colored = if net.is_income() {
-                net_str.green().bold()
-            } else {
-                net_str.red().bold()
-            };
-            println!("  {:<49} {:>12}", label.bold(), colored);
-        }
-        "A" => {
-            println!(
-                "  {:<49} {:>12}",
-                "Total Itemized Deductions".bold(),
-                format!("{}", expense_total.abs()).bold()
-            );
-            println!();
-            println!(
-                "{}",
-                "Note: Medical expenses are subject to 7.5% AGI floor.".dimmed()
-            );
-            println!(
-                "{}",
-                "State/local taxes are capped at $10,000 (SALT cap).".dimmed()
-            );
-        }
-        _ => {
-            println!(
-                "  {:<49} {:>12}",
-                "Total".bold(),
-                format!("{}", grand_total).bold()
-            );
-        }
-    }
+            for (line_code, description) in &labels {
+                let (amount, count) = line_totals
+                    .get(*line_code)
+                    .copied()
+                    .unwrap_or((Money::zero(), 0));
 
-    // Show uncategorized warning
-    let uncategorized = transactions
-        .iter()
-        .filter(|t| t.category_id.is_none() && t.schedule_c_line.is_none())
-        .count();
-    if uncategorized > 0 {
-        println!();
-        println!(
-            "{}",
-            format!(
-                "Warning: {} transactions are uncategorized. Some deductions are likely missing.",
-                uncategorized
-            )
-            .yellow()
-        );
-        println!(
-            "{}",
-            "Run 'finance transaction categorize' to assign categories.".yellow()
-        );
+                if count > 0 {
+                    rows.push(vec![
+                        line_code.to_string(),
+                        description.to_string(),
+                        format!("{}", amount),
+                        count.to_string(),
+                    ]);
+                }
+            }
+
+            write_csv(&headers, rows, output.as_ref())?;
+        }
+        OutputFormat::Json => {
+            let mut line_items = Vec::new();
+
+            for (line_code, description) in &labels {
+                let (amount, count) = line_totals
+                    .get(*line_code)
+                    .copied()
+                    .unwrap_or((Money::zero(), 0));
+
+                if count > 0 {
+                    line_items.push(json!({
+                        "line": line_code.to_string(),
+                        "description": description.to_string(),
+                        "amount": amount.to_string(),
+                        "transactions": count
+                    }));
+                }
+            }
+
+            let json_output = json!({
+                "schedule": schedule,
+                "year": year,
+                "lines": line_items
+            });
+
+            write_json(json_output, output.as_ref())?;
+        }
     }
 
     Ok(())
@@ -804,7 +1047,7 @@ fn handle_tax_compare(conn: &Connection, years_str: &str, schedule: &str) -> Res
 
 // ─── Summary Report ───────────────────────────────────────────
 
-fn handle_summary(conn: &Connection, year: i32) -> Result<()> {
+fn handle_summary(conn: &Connection, year: i32, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     use colored::Colorize;
 
     let date_range = DateRange::year(year)
@@ -820,166 +1063,214 @@ fn handle_summary(conn: &Connection, year: i32) -> Result<()> {
         return Ok(());
     }
 
-    println!("{}", format!("═══ Financial Summary - {} ═══", year).bold());
-    println!();
-
-    // Transaction counts
+    // Calculate metrics before matching on format
     let counts = metrics::transaction_counts(&transactions);
-    println!("{}", "Transaction Overview".bold());
-    println!("  Total transactions:    {}", counts.total);
-    println!("  Income transactions:   {}", counts.income);
-    println!("  Expense transactions:  {}", counts.expense);
-    println!(
-        "  Categorized:           {} ({:.1}%)",
-        counts.categorized,
-        if counts.total > 0 {
-            counts.categorized as f64 / counts.total as f64 * 100.0
-        } else {
-            0.0
-        }
-    );
-    println!("  Uncategorized:         {}", counts.uncategorized);
-    println!();
-
-    // Income / Expenses / Net
     let total_in = calculator::total_income(&transactions);
     let total_out = calculator::total_expenses(&transactions);
     let net = calculator::net_total(&transactions);
-
-    println!("{}", "Financial Totals".bold());
-    println!("  Total Income:          {}", format!("{}", total_in).green());
-    println!(
-        "  Total Expenses:        {}",
-        format!("{}", total_out).red()
-    );
-    let net_str = format!("{}", net);
-    if net.is_income() {
-        println!("  Net:                   {}", net_str.green().bold());
-    } else {
-        println!("  Net:                   {}", net_str.red().bold());
-    }
-    println!();
-
-    // Average monthly
     let avg_monthly = metrics::average_monthly_expenses(&transactions);
-    println!(
-        "  Avg Monthly Spending:  {}",
-        format!("{}", avg_monthly).red()
-    );
-    println!();
-
-    // Top 10 expense categories
     let report = PnLReport::generate(&transactions, &categories, date_range);
     let top_expenses = report.expenses_sorted();
 
-    if !top_expenses.is_empty() {
-        println!("{}", "Top 10 Expense Categories".bold());
-        for (i, item) in top_expenses.iter().take(10).enumerate() {
+    match format {
+        OutputFormat::Table => {
+            println!("{}", format!("═══ Financial Summary - {} ═══", year).bold());
+            println!();
+
+            // Transaction counts
+            println!("{}", "Transaction Overview".bold());
+            println!("  Total transactions:    {}", counts.total);
+            println!("  Income transactions:   {}", counts.income);
+            println!("  Expense transactions:  {}", counts.expense);
             println!(
-                "  {}. {:<30} {:>12}  ({} txns)",
-                i + 1,
-                item.category_name,
-                format!("{}", item.total).red(),
-                item.transaction_count
+                "  Categorized:           {} ({:.1}%)",
+                counts.categorized,
+                if counts.total > 0 {
+                    counts.categorized as f64 / counts.total as f64 * 100.0
+                } else {
+                    0.0
+                }
             );
+            println!("  Uncategorized:         {}", counts.uncategorized);
+            println!();
+
+            // Income / Expenses / Net
+            println!("{}", "Financial Totals".bold());
+            println!("  Total Income:          {}", format!("{}", total_in).green());
+            println!(
+                "  Total Expenses:        {}",
+                format!("{}", total_out).red()
+            );
+            let net_str = format!("{}", net);
+            if net.is_income() {
+                println!("  Net:                   {}", net_str.green().bold());
+            } else {
+                println!("  Net:                   {}", net_str.red().bold());
+            }
+            println!();
+
+            // Average monthly
+            println!(
+                "  Avg Monthly Spending:  {}",
+                format!("{}", avg_monthly).red()
+            );
+            println!();
+
+            // Top 10 expense categories
+            if !top_expenses.is_empty() {
+                println!("{}", "Top 10 Expense Categories".bold());
+                for (i, item) in top_expenses.iter().take(10).enumerate() {
+                    println!(
+                        "  {}. {:<30} {:>12}  ({} txns)",
+                        i + 1,
+                        item.category_name,
+                        format!("{}", item.total).red(),
+                        item.transaction_count
+                    );
+                }
+                println!();
+            }
+
+            // Largest transactions
+            if let Some(biggest_expense) = metrics::largest_expense(&transactions) {
+                println!("{}", "Notable Transactions".bold());
+                println!(
+                    "  Largest expense: {} on {} - {}",
+                    format!("{}", biggest_expense.amount).red(),
+                    biggest_expense.transaction_date,
+                    biggest_expense.description
+                );
+            }
+            if let Some(biggest_income) = metrics::largest_income(&transactions) {
+                println!(
+                    "  Largest income:  {} on {} - {}",
+                    format!("{}", biggest_income.amount).green(),
+                    biggest_income.transaction_date,
+                    biggest_income.description
+                );
+            }
+
+            // Tax schedule summary
+            println!();
+            println!("{}", "Tax Schedule Coverage".bold());
+
+            let schedule_a_count: usize = categories
+                .iter()
+                .filter(|c| {
+                    c.schedule_c_line
+                        .as_ref()
+                        .map(|l| l.starts_with("A-"))
+                        .unwrap_or(false)
+                })
+                .map(|c| {
+                    transactions
+                        .iter()
+                        .filter(|t| t.category_id == Some(c.id))
+                        .count()
+                })
+                .sum();
+
+            let schedule_c_count: usize = categories
+                .iter()
+                .filter(|c| {
+                    c.schedule_c_line
+                        .as_ref()
+                        .map(|l| l.starts_with('L'))
+                        .unwrap_or(false)
+                })
+                .map(|c| {
+                    transactions
+                        .iter()
+                        .filter(|t| t.category_id == Some(c.id))
+                        .count()
+                })
+                .sum();
+
+            let schedule_e_count: usize = categories
+                .iter()
+                .filter(|c| {
+                    c.schedule_c_line
+                        .as_ref()
+                        .map(|l| l.starts_with("E-"))
+                        .unwrap_or(false)
+                })
+                .map(|c| {
+                    transactions
+                        .iter()
+                        .filter(|t| t.category_id == Some(c.id))
+                        .count()
+                })
+                .sum();
+
+            println!(
+                "  Schedule A (Itemized Deductions):  {} categorized transactions",
+                schedule_a_count
+            );
+            println!(
+                "  Schedule C (Self-Employment):      {} categorized transactions",
+                schedule_c_count
+            );
+            println!(
+                "  Schedule E (Rental Real Estate):   {} categorized transactions",
+                schedule_e_count
+            );
+
+            if schedule_a_count == 0 && schedule_c_count == 0 && schedule_e_count == 0 {
+                println!();
+                println!(
+                    "{}",
+                    "No transactions are mapped to tax schedules yet.".yellow()
+                );
+                println!(
+                    "{}",
+                    "Categorize transactions to populate Schedule A, C, and E reports.".yellow()
+                );
+            }
         }
-        println!();
-    }
+        OutputFormat::Csv => {
+            let headers = vec!["metric", "value"];
+            let mut rows = Vec::new();
 
-    // Largest transactions
-    if let Some(biggest_expense) = metrics::largest_expense(&transactions) {
-        println!("{}", "Notable Transactions".bold());
-        println!(
-            "  Largest expense: {} on {} - {}",
-            format!("{}", biggest_expense.amount).red(),
-            biggest_expense.transaction_date,
-            biggest_expense.description
-        );
-    }
-    if let Some(biggest_income) = metrics::largest_income(&transactions) {
-        println!(
-            "  Largest income:  {} on {} - {}",
-            format!("{}", biggest_income.amount).green(),
-            biggest_income.transaction_date,
-            biggest_income.description
-        );
-    }
+            rows.push(vec!["total_transactions".to_string(), counts.total.to_string()]);
+            rows.push(vec!["income_transactions".to_string(), counts.income.to_string()]);
+            rows.push(vec!["expense_transactions".to_string(), counts.expense.to_string()]);
+            rows.push(vec!["categorized".to_string(), counts.categorized.to_string()]);
+            rows.push(vec!["uncategorized".to_string(), counts.uncategorized.to_string()]);
+            rows.push(vec!["total_income".to_string(), format!("{}", total_in)]);
+            rows.push(vec!["total_expenses".to_string(), format!("{}", total_out)]);
+            rows.push(vec!["net".to_string(), format!("{}", net)]);
+            rows.push(vec!["avg_monthly_expenses".to_string(), format!("{}", avg_monthly)]);
+            if !top_expenses.is_empty() {
+                rows.push(vec!["top_expense_category".to_string(), top_expenses[0].category_name.clone()]);
+            }
 
-    // Tax schedule summary
-    println!();
-    println!("{}", "Tax Schedule Coverage".bold());
+            write_csv(&headers, rows, output.as_ref())?;
+        }
+        OutputFormat::Json => {
+            let json_output = json!({
+                "year": year,
+                "transactions": {
+                    "total": counts.total,
+                    "income": counts.income,
+                    "expense": counts.expense,
+                    "categorized": counts.categorized,
+                    "uncategorized": counts.uncategorized
+                },
+                "financial": {
+                    "total_income": total_in.to_string(),
+                    "total_expenses": total_out.to_string(),
+                    "net": net.to_string(),
+                    "avg_monthly_expenses": avg_monthly.to_string()
+                },
+                "top_expenses": top_expenses.iter().take(10).map(|item| json!({
+                    "category": item.category_name,
+                    "amount": item.total.to_string(),
+                    "transactions": item.transaction_count
+                })).collect::<Vec<_>>()
+            });
 
-    let schedule_a_count: usize = categories
-        .iter()
-        .filter(|c| {
-            c.schedule_c_line
-                .as_ref()
-                .map(|l| l.starts_with("A-"))
-                .unwrap_or(false)
-        })
-        .map(|c| {
-            transactions
-                .iter()
-                .filter(|t| t.category_id == Some(c.id))
-                .count()
-        })
-        .sum();
-
-    let schedule_c_count: usize = categories
-        .iter()
-        .filter(|c| {
-            c.schedule_c_line
-                .as_ref()
-                .map(|l| l.starts_with('L'))
-                .unwrap_or(false)
-        })
-        .map(|c| {
-            transactions
-                .iter()
-                .filter(|t| t.category_id == Some(c.id))
-                .count()
-        })
-        .sum();
-
-    let schedule_e_count: usize = categories
-        .iter()
-        .filter(|c| {
-            c.schedule_c_line
-                .as_ref()
-                .map(|l| l.starts_with("E-"))
-                .unwrap_or(false)
-        })
-        .map(|c| {
-            transactions
-                .iter()
-                .filter(|t| t.category_id == Some(c.id))
-                .count()
-        })
-        .sum();
-
-    println!(
-        "  Schedule A (Itemized Deductions):  {} categorized transactions",
-        schedule_a_count
-    );
-    println!(
-        "  Schedule C (Self-Employment):      {} categorized transactions",
-        schedule_c_count
-    );
-    println!(
-        "  Schedule E (Rental Real Estate):   {} categorized transactions",
-        schedule_e_count
-    );
-
-    if schedule_a_count == 0 && schedule_c_count == 0 && schedule_e_count == 0 {
-        println!();
-        println!(
-            "{}",
-            "No transactions are mapped to tax schedules yet.".yellow()
-        );
-        println!(
-            "{}",
-            "Categorize transactions to populate Schedule A, C, and E reports.".yellow()
-        );
+            write_json(json_output, output.as_ref())?;
+        }
     }
 
     Ok(())
