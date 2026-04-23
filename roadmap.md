@@ -1,6 +1,6 @@
 # Finance CLI Roadmap
 
-Last updated: 2026-04-14 17:24 EDT
+Last updated: 2026-04-22 21:18 EDT
 Last updated by: Jessie Gibson
 
 Use this file to track the overall development of the Finance CLI application. Move items between sections as work progresses. Keep entries short, link to issues or PRs where possible, and record completion dates.
@@ -130,6 +130,8 @@ A privacy-first personal finance CLI for freelancers and small business owners. 
 - [ ] Categorization benchmarks still run placeholder `1 + 1` loops (parser benchmarks resolved 2026-04-08)
 - [ ] Schema version is hardcoded at 1 with no downgrade path
 - [ ] No integration test suite covering the full import-to-report flow
+- [x] CSV institution detector scanned the entire file for keyword matches, causing bank names in transaction descriptions (e.g. "Chase Bank") to trigger the wrong column mapping — fixed by scoping fallback to the first 10 lines (2026-04-22)
+- [x] Wealthfront Individual Cash Account exports (`Transaction date,Description,Type,Amount`, M/D/YYYY) were misidentified as SoFi; added `WealthfrontCash` institution variant with the correct column mapping (2026-04-22)
 
 ## Release history
 

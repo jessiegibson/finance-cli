@@ -34,6 +34,7 @@ pub fn parse_csv_content(
             "chase" => Institution::Chase,
             "bank_of_america" | "bofa" => Institution::BankOfAmerica,
             "wealthfront" => Institution::Wealthfront,
+            "wealthfront_cash" | "wealthfrontcash" => Institution::WealthfrontCash,
             "ally" => Institution::Ally,
             "american_express" | "amex" => Institution::AmericanExpress,
             "discover" => Institution::Discover,
@@ -61,6 +62,14 @@ pub fn parse_csv_content(
     for (line_num, record) in reader.records().enumerate() {
         match record {
             Ok(row) => {
+                // Skip rows that look like section headers or account-info separators
+                // (e.g. "Chase Bank (Account ****2790),,,"). A real date field always
+                // contains at least one digit and a '/' or '-' separator.
+                if let Some(date_field) = row.get(mapping.date_column) {
+                    if !looks_like_date(date_field.trim()) {
+                        continue;
+                    }
+                }
                 match parse_csv_row(&row, account, &mapping, line_num + 1) {
                     Ok(tx) => result.transactions.push(tx),
                     Err(e) => result.errors.push(format!("Line {}: {}", line_num + 2, e)),
@@ -131,6 +140,16 @@ fn parse_csv_row(
         .map_err(|e| crate::error::Error::Parse(ParseError::MissingField(e.into())))
 }
 
+/// Return true if `s` looks like a date value.
+///
+/// A date must contain at least one ASCII digit and at least one date
+/// separator (`/` or `-`).  This quick check lets the row-iteration loop
+/// silently skip section-header or account-info rows that banks sometimes
+/// insert mid-file (e.g. "Chase Bank (Account ****2790),,,").
+fn looks_like_date(s: &str) -> bool {
+    s.chars().any(|c| c.is_ascii_digit()) && (s.contains('/') || s.contains('-'))
+}
+
 /// Parse a date string with the given format.
 fn parse_date(s: &str, format: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(s, format).map_err(|_| {
@@ -195,5 +214,32 @@ mod tests {
 
         assert_eq!(result.transactions.len(), 1);
         assert_eq!(result.transactions[0].description, "Test Purchase");
+    }
+
+    #[test]
+    fn test_looks_like_date() {
+        assert!(looks_like_date("3/7/2026"));
+        assert!(looks_like_date("01/15/2024"));
+        assert!(looks_like_date("2024-01-15"));
+        assert!(!looks_like_date("Chase Bank (Account ****2790)"));
+        assert!(!looks_like_date("Individual Cash Account"));
+        assert!(!looks_like_date(""));
+        assert!(!looks_like_date("Transaction date"));
+    }
+
+    #[test]
+    fn test_skip_section_header_rows() {
+        // Simulate a SoFi-format CSV that contains a mid-file account-info separator
+        // row ("Chase Bank (Account ****2790),,,"). The parser should skip it silently
+        // and still import the surrounding real transactions.
+        let csv = "Transaction date,Description,Type,Amount\n\
+                   3/12/2026,Citi Autopay,Withdrawal,-25.00\n\
+                   Chase Bank (Account ****2790),,,\n\
+                   3/11/2026,Paycheck,Deposit,869.00";
+        let account = test_account();
+        let result = parse_csv_content(csv, &account, Some("sofi")).unwrap();
+
+        assert_eq!(result.transactions.len(), 2, "separator row must be skipped");
+        assert!(result.errors.is_empty(), "no errors expected: {:?}", result.errors);
     }
 }
