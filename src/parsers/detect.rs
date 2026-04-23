@@ -76,7 +76,10 @@ pub fn detect_format_from_content(content: &str) -> Result<FileFormat> {
 pub enum Institution {
     Chase,
     BankOfAmerica,
+    /// Wealthfront investing / brokerage account ("Date,Amount,Description", ISO dates)
     Wealthfront,
+    /// Wealthfront Individual Cash Account ("Transaction date,Description,Type,Amount", M/D/YYYY)
+    WealthfrontCash,
     Ally,
     AmericanExpress,
     Discover,
@@ -92,6 +95,7 @@ impl Institution {
             Institution::Chase => "chase",
             Institution::BankOfAmerica => "bank_of_america",
             Institution::Wealthfront => "wealthfront",
+            Institution::WealthfrontCash => "wealthfront_cash",
             Institution::Ally => "ally",
             Institution::AmericanExpress => "american_express",
             Institution::Discover => "discover",
@@ -107,6 +111,7 @@ impl Institution {
             Institution::Chase => "Chase",
             Institution::BankOfAmerica => "Bank of America",
             Institution::Wealthfront => "Wealthfront",
+            Institution::WealthfrontCash => "Wealthfront Cash",
             Institution::Ally => "Ally",
             Institution::AmericanExpress => "American Express",
             Institution::Discover => "Discover",
@@ -152,9 +157,10 @@ pub fn detect_institution(content: &str) -> Institution {
         return Institution::AmericanExpress;
     }
 
-    // SoFi: headers contain "transaction date" and ",type,"
+    // Wealthfront Individual Cash Account: "Transaction date,Description,Type,Amount"
+    // (distinct from the investing account which uses "Date,Amount,Description")
     if first_lines.contains("transaction date") && first_lines.contains(",type,") {
-        return Institution::SoFi;
+        return Institution::WealthfrontCash;
     }
 
     // Chase: "Details,Posting Date,Description,Amount"
@@ -162,24 +168,28 @@ pub fn detect_institution(content: &str) -> Institution {
         return Institution::Chase;
     }
 
-    // Fall back to whole-word keyword matching
-    if contains_word(&lower, "chase") {
+    // Fall back to whole-word keyword matching — restrict to the header area (first 10
+    // lines) so that bank names appearing in transaction *descriptions* (e.g. a transfer
+    // to "Chase Bank") don't trigger the wrong format.
+    let header_area: String = lower.lines().take(10).collect::<Vec<_>>().join("\n");
+
+    if contains_word(&header_area, "chase") {
         Institution::Chase
-    } else if lower.contains("bank of america") || contains_word(&lower, "bofa") {
+    } else if header_area.contains("bank of america") || contains_word(&header_area, "bofa") {
         Institution::BankOfAmerica
-    } else if contains_word(&lower, "wealthfront") {
+    } else if contains_word(&header_area, "wealthfront") {
         Institution::Wealthfront
-    } else if contains_word(&lower, "ally") {
+    } else if contains_word(&header_area, "ally") {
         Institution::Ally
-    } else if lower.contains("american express") || contains_word(&lower, "amex") {
+    } else if header_area.contains("american express") || contains_word(&header_area, "amex") {
         Institution::AmericanExpress
-    } else if contains_word(&lower, "discover") {
+    } else if contains_word(&header_area, "discover") {
         Institution::Discover
-    } else if contains_word(&lower, "citibank") || contains_word(&lower, "citi") {
+    } else if contains_word(&header_area, "citibank") || contains_word(&header_area, "citi") {
         Institution::Citi
-    } else if lower.contains("capital one") {
+    } else if header_area.contains("capital one") {
         Institution::CapitalOne
-    } else if contains_word(&lower, "sofi") {
+    } else if contains_word(&header_area, "sofi") {
         Institution::SoFi
     } else {
         Institution::Unknown
@@ -221,11 +231,22 @@ impl Institution {
                 negate_amounts: false,
             },
             Institution::Wealthfront => CsvMapping {
+                // Investing / brokerage account export: Date,Amount,Description
                 date_column: 0,
                 amount_column: 1,
                 description_column: 2,
                 category_column: None,
                 date_format: "%Y-%m-%d",
+                has_header: true,
+                negate_amounts: false,
+            },
+            Institution::WealthfrontCash => CsvMapping {
+                // Individual Cash Account export: Transaction date,Description,Type,Amount
+                date_column: 0,
+                description_column: 1,
+                category_column: Some(2), // "Type" column (Withdrawal/Deposit/Transfer/etc.)
+                amount_column: 3,
+                date_format: "%m/%d/%Y",
                 has_header: true,
                 negate_amounts: false,
             },
@@ -290,5 +311,22 @@ mod tests {
     fn test_detect_institution_chase() {
         let content = "Details,Posting Date,Description,Amount,Type,Balance\nDEBIT,01/15/2024,AMAZON,-50.00,ACH,1000.00";
         assert_eq!(detect_institution(content), Institution::Chase);
+    }
+
+    #[test]
+    fn test_detect_wealthfront_cash() {
+        // The Individual Cash Account header should be detected as WealthfrontCash.
+        let content = "Transaction date,Description,Type,Amount\n3/12/2026,Paycheck,Deposit,869.00";
+        assert_eq!(detect_institution(content), Institution::WealthfrontCash);
+    }
+
+    #[test]
+    fn test_detect_no_false_positive_from_description() {
+        // "Chase Bank" appearing only in a transaction description must not trigger
+        // Chase format detection — that would assign the wrong column mapping.
+        let content = "Transaction date,Description,Type,Amount\n\
+                       3/7/2026,Chase Bank (Account ****2790),Withdrawal,-3000.00\n\
+                       3/6/2026,Nys Dol Ui Dd-Ui Dd,Deposit,869.00";
+        assert_eq!(detect_institution(content), Institution::WealthfrontCash);
     }
 }
