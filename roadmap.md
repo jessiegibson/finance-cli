@@ -1,7 +1,7 @@
 # Finance CLI Roadmap
 
-Last updated: 2026-04-14 17:33 EDT
-Last updated by: Claude
+Last updated: 2026-04-22 20:21 EDT
+Last updated by: Jessie Gibson
 
 Use this file to track the overall development of the Finance CLI application. Move items between sections as work progresses. Keep entries short, link to issues or PRs where possible, and record completion dates.
 
@@ -50,6 +50,7 @@ A privacy-first personal finance CLI for freelancers and small business owners. 
 - [x] Rule model with AND/OR/NOT conditions over description, amount, and merchant
 - [x] `CategorizationEngine` orchestrator with confidence scoring
 - [x] Default category seeding on `finance init` (44 categories: Schedule C, E, A + Personal)
+- [x] Expanded default category hierarchy: added personal spending parents (Bills, Transportation, Personal Travel, Household Utilities, Family, Healthcare - Personal, Home) and Investment Income, with children under each via `parent_id` FK; `category list` renders hierarchy; `category create --parent` supports nesting (2026-04-22)
 - [x] `TransactionRepository::insert()`, `update_category()`, `find_uncategorized()` (2026-04-14)
 - [x] `RuleRepository::find_active()` and `insert()` wired to database (2026-04-14)
 - [x] `row_to_rule()` DB converter with JSON conditions deserialization (2026-04-14)
@@ -92,6 +93,12 @@ A privacy-first personal finance CLI for freelancers and small business owners. 
 - [ ] Rule priority resolution when multiple rules match a single transaction
 - [ ] Bulk re-categorization command to apply new rules to historical data
 - [ ] Confidence threshold configuration in `config.toml`
+
+### Tax document reconciliation
+- [ ] 1098 mortgage reconciliation: at year-end, split `Mortgage Payments` (holding) into Home Mortgage Interest [A-8a], Real Estate Tax [A-5c] (escrowed), and non-deductible principal using the Form 1098. Same pattern for `Rental - Mortgage Interest` via 1098 on rental loans.
+- [ ] 1099-INT / 1099-DIV ingestion to validate / true-up `Interest Income` and `Dividend Income`
+- [ ] 1099-SA / Form 8889 reconciliation for `HSA Contributions` and distributions
+- [ ] 1098-T ingestion for `Education & Tuition` (education credits)
 
 ### Reporting
 - [ ] Year-over-year comparison for P&L

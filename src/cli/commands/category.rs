@@ -34,6 +34,10 @@ pub enum CategoryAction {
         /// Schedule C line mapping
         #[arg(short, long)]
         schedule_c: Option<String>,
+
+        /// Parent category name (to nest this category underneath)
+        #[arg(short, long)]
+        parent: Option<String>,
     },
 
     /// Show category rules
@@ -76,10 +80,49 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
                 .filter(|c| matches!(c.category_type, crate::models::CategoryType::Personal))
                 .collect();
 
+            // Build parent_id -> children map across the full category set so
+            // that a child of a different type (e.g. Co-pays is Expense but
+            // nests under the Personal "Healthcare - Personal" parent) still
+            // renders under its parent.
+            let by_parent: std::collections::HashMap<uuid::Uuid, Vec<&Category>> = {
+                let mut map: std::collections::HashMap<uuid::Uuid, Vec<&Category>> =
+                    std::collections::HashMap::new();
+                for cat in &categories {
+                    if let Some(pid) = cat.parent_id {
+                        map.entry(pid).or_default().push(cat);
+                    }
+                }
+                for v in map.values_mut() {
+                    v.sort_by_key(|c| (c.sort_order, c.name.clone()));
+                }
+                map
+            };
+
+            let render_category = |cat: &Category, bullet: colored::ColoredString| {
+                let schedule_c = cat
+                    .schedule_c_line
+                    .as_ref()
+                    .map(|s| format!(" [{}]", s))
+                    .unwrap_or_default();
+                println!("  {} {}{}", bullet, cat.name, schedule_c.dimmed());
+                if let Some(children) = by_parent.get(&cat.id) {
+                    for child in children {
+                        let child_sc = child
+                            .schedule_c_line
+                            .as_ref()
+                            .map(|s| format!(" [{}]", s))
+                            .unwrap_or_default();
+                        println!("      {} {}{}", "↳".dimmed(), child.name, child_sc.dimmed());
+                    }
+                }
+            };
+
             if !income.is_empty() {
                 println!("{}", "Income:".green().bold());
                 for cat in &income {
-                    println!("  {} {}", "•".green(), cat.name);
+                    if cat.parent_id.is_none() {
+                        render_category(cat, "•".green());
+                    }
                 }
                 println!();
             }
@@ -87,12 +130,9 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
             if !expense.is_empty() {
                 println!("{}", "Expense:".red().bold());
                 for cat in &expense {
-                    let schedule_c = cat
-                        .schedule_c_line
-                        .as_ref()
-                        .map(|s| format!(" [{}]", s))
-                        .unwrap_or_default();
-                    println!("  {} {}{}", "•".red(), cat.name, schedule_c.dimmed());
+                    if cat.parent_id.is_none() {
+                        render_category(cat, "•".red());
+                    }
                 }
                 println!();
             }
@@ -100,7 +140,9 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
             if !personal.is_empty() {
                 println!("{}", "Personal:".blue().bold());
                 for cat in &personal {
-                    println!("  {} {}", "•".blue(), cat.name);
+                    if cat.parent_id.is_none() {
+                        render_category(cat, "•".blue());
+                    }
                 }
             }
         }
@@ -109,6 +151,7 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
             name,
             category_type,
             schedule_c,
+            parent,
         } => {
             let repo = CategoryRepository::new(conn);
 
@@ -138,10 +181,29 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
                 }
             };
 
+            // Resolve parent if provided
+            let parent_cat = match parent.as_deref() {
+                Some(parent_name) => match repo.find_by_name(parent_name)? {
+                    Some(p) => Some(p),
+                    None => {
+                        println!(
+                            "{} Parent category '{}' not found.",
+                            "Error:".red().bold(),
+                            parent_name
+                        );
+                        return Ok(());
+                    }
+                },
+                None => None,
+            };
+
             // Build category
             let mut category = Category::new(&name, cat_type);
             if let Some(ref sc) = schedule_c {
                 category = category.with_schedule_c(sc);
+            }
+            if let Some(ref p) = parent_cat {
+                category = category.with_parent(p.id);
             }
 
             repo.insert(&category)?;
@@ -151,6 +213,9 @@ pub fn handle_category(cmd: CategoryCommand, _config: &Config, conn: &Connection
             println!("  Type: {}", category_type);
             if let Some(ref sc) = schedule_c {
                 println!("  Schedule C: {}", sc);
+            }
+            if let Some(ref p) = parent_cat {
+                println!("  Parent: {}", p.name);
             }
             if category.is_tax_deductible {
                 println!("  Tax deductible: {}", "yes".green());

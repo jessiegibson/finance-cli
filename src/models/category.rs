@@ -134,8 +134,12 @@ impl Entity for Category {
 }
 
 /// Default categories for initial setup.
+///
+/// Returns categories in insertion order: parents always appear before their
+/// children so that the FK `parent_id REFERENCES categories(id)` is satisfied
+/// when `CategoryRepository::insert_defaults` iterates the vec.
 pub fn default_categories() -> Vec<Category> {
-    vec![
+    let mut categories: Vec<Category> = vec![
         // Income categories
         Category::income("Business Income")
             .with_description("Income from business activities")
@@ -327,7 +331,292 @@ pub fn default_categories() -> Vec<Category> {
         Category::personal("Uncategorized")
             .with_description("Transactions not yet categorized")
             .with_sort_order(99),
-    ]
+    ];
+
+    // --- Investment income (1099-INT / 1099-DIV landing spots) ---
+    let investment_income = Category::income("Investment Income")
+        .with_description("Interest, dividends, and other investment income (1099-INT, 1099-DIV)")
+        .with_sort_order(4);
+    let investment_income_id = investment_income.id;
+    categories.push(investment_income);
+    categories.push(
+        Category::income("Interest Income")
+            .with_parent(investment_income_id)
+            .with_description("Interest from bank accounts, bonds, etc. (1099-INT)")
+            .with_sort_order(5),
+    );
+    categories.push(
+        Category::income("Dividend Income")
+            .with_parent(investment_income_id)
+            .with_description("Dividends from stocks, mutual funds, ETFs (1099-DIV)")
+            .with_sort_order(6),
+    );
+
+    // --- Bills (recurring obligations) ---
+    // "Mortgage Payments" is a holding bucket: the full monthly payment lands
+    // here before year-end 1098 reconciliation splits it into A-8a interest,
+    // A-5c real estate tax (if escrowed), and non-deductible principal.
+    let bills = Category::personal("Bills")
+        .with_description("Recurring bill payments (mortgage, loans, subscriptions)")
+        .with_sort_order(200);
+    let bills_id = bills.id;
+    categories.push(bills);
+    categories.push(
+        Category::personal("Mortgage Payments")
+            .with_parent(bills_id)
+            .with_description("Full mortgage payment; reconcile at year-end using Form 1098")
+            .with_sort_order(201),
+    );
+    categories.push(
+        Category::personal("Credit Card Payments")
+            .with_parent(bills_id)
+            .with_description("Payments to credit card accounts (often an account transfer)")
+            .with_sort_order(202),
+    );
+    categories.push(
+        Category::personal("Loan Payments")
+            .with_parent(bills_id)
+            .with_description("Personal loan payments; interest portion may need reconciliation")
+            .with_sort_order(203),
+    );
+    categories.push(
+        Category::personal("Subscriptions")
+            .with_parent(bills_id)
+            .with_description("Software, news, memberships (non-streaming)")
+            .with_sort_order(204),
+    );
+
+    // --- Transportation (personal vehicle and transit) ---
+    let transportation = Category::personal("Transportation")
+        .with_description("Personal vehicle, transit, and ride share")
+        .with_sort_order(210);
+    let transportation_id = transportation.id;
+    categories.push(transportation);
+    categories.push(
+        Category::personal("Auto Repairs")
+            .with_parent(transportation_id)
+            .with_description("Vehicle repairs and maintenance")
+            .with_sort_order(211),
+    );
+    categories.push(
+        Category::personal("Auto Insurance")
+            .with_parent(transportation_id)
+            .with_description("Personal auto insurance premiums")
+            .with_sort_order(212),
+    );
+    categories.push(
+        Category::personal("Auto Fuel")
+            .with_parent(transportation_id)
+            .with_description("Gasoline and charging")
+            .with_sort_order(213),
+    );
+    categories.push(
+        Category::personal("License & Registration")
+            .with_parent(transportation_id)
+            .with_description("Vehicle registration, license renewal")
+            .with_sort_order(214),
+    );
+    categories.push(
+        Category::personal("Public Transit")
+            .with_parent(transportation_id)
+            .with_description("Bus, subway, train passes")
+            .with_sort_order(215),
+    );
+    categories.push(
+        Category::personal("Ride Share")
+            .with_parent(transportation_id)
+            .with_description("Uber, Lyft, and similar services")
+            .with_sort_order(216),
+    );
+    categories.push(
+        Category::personal("Parking, Tolls & Tickets")
+            .with_parent(transportation_id)
+            .with_description("Parking fees, road tolls, traffic tickets")
+            .with_sort_order(217),
+    );
+
+    // --- Personal Travel (renamed to avoid UNIQUE clash with Schedule C "Travel") ---
+    let personal_travel = Category::personal("Personal Travel")
+        .with_description("Non-business flights, hotels, and trip expenses")
+        .with_sort_order(220);
+    let personal_travel_id = personal_travel.id;
+    categories.push(personal_travel);
+    categories.push(
+        Category::personal("Flights")
+            .with_parent(personal_travel_id)
+            .with_description("Airline tickets for personal travel")
+            .with_sort_order(221),
+    );
+    categories.push(
+        Category::personal("Hotel")
+            .with_parent(personal_travel_id)
+            .with_description("Lodging for personal travel")
+            .with_sort_order(222),
+    );
+    categories.push(
+        Category::personal("Travel Ride Share")
+            .with_parent(personal_travel_id)
+            .with_description("Ride share used while traveling")
+            .with_sort_order(223),
+    );
+
+    // --- Household Utilities (renamed to avoid UNIQUE clash with Schedule C "Utilities") ---
+    let household_utilities = Category::personal("Household Utilities")
+        .with_description("Home utility bills (gas, water, power, internet, phone)")
+        .with_sort_order(230);
+    let household_utilities_id = household_utilities.id;
+    categories.push(household_utilities);
+    categories.push(
+        Category::personal("Natural Gas")
+            .with_parent(household_utilities_id)
+            .with_description("Home heating gas utility")
+            .with_sort_order(231),
+    );
+    categories.push(
+        Category::personal("Water & Sewer")
+            .with_parent(household_utilities_id)
+            .with_description("Water and sewer service")
+            .with_sort_order(232),
+    );
+    categories.push(
+        Category::personal("Electricity")
+            .with_parent(household_utilities_id)
+            .with_description("Electric utility")
+            .with_sort_order(233),
+    );
+    categories.push(
+        Category::personal("Internet Service")
+            .with_parent(household_utilities_id)
+            .with_description("Home internet service")
+            .with_sort_order(234),
+    );
+    categories.push(
+        Category::personal("Streaming Services")
+            .with_parent(household_utilities_id)
+            .with_description("Streaming subscriptions (Netflix, Hulu, Spotify, etc.)")
+            .with_sort_order(235),
+    );
+    categories.push(
+        Category::personal("Mobile Phone")
+            .with_parent(household_utilities_id)
+            .with_description("Cell phone service")
+            .with_sort_order(236),
+    );
+
+    // --- Family (household spending) ---
+    let family = Category::personal("Family")
+        .with_description("Household spending: food, clothing, kids, pets")
+        .with_sort_order(240);
+    let family_id = family.id;
+    categories.push(family);
+    categories.push(
+        Category::personal("Groceries")
+            .with_parent(family_id)
+            .with_description("Food and household staples")
+            .with_sort_order(241),
+    );
+    categories.push(
+        Category::personal("Dining Out")
+            .with_parent(family_id)
+            .with_description("Restaurants, takeout, coffee (personal)")
+            .with_sort_order(242),
+    );
+    categories.push(
+        Category::personal("Entertainment")
+            .with_parent(family_id)
+            .with_description("Movies, concerts, events")
+            .with_sort_order(243),
+    );
+    categories.push(
+        Category::personal("Clothing & Personal Care")
+            .with_parent(family_id)
+            .with_description("Clothing, haircuts, toiletries")
+            .with_sort_order(244),
+    );
+    categories.push(
+        Category::personal("School Expenses")
+            .with_parent(family_id)
+            .with_description("Supplies, activities, fees for K-12")
+            .with_sort_order(245),
+    );
+    categories.push(
+        Category::personal("Childcare")
+            .with_parent(family_id)
+            .with_description("Daycare, babysitters (Form 2441 / Dependent Care FSA)")
+            .with_sort_order(246),
+    );
+    categories.push(
+        Category::personal("Pets")
+            .with_parent(family_id)
+            .with_description("Pet food, vet, grooming, supplies")
+            .with_sort_order(247),
+    );
+    categories.push(
+        Category::personal("Gifts")
+            .with_parent(family_id)
+            .with_description("Gifts given (birthdays, holidays)")
+            .with_sort_order(248),
+    );
+    categories.push(
+        Category::personal("Education & Tuition")
+            .with_parent(family_id)
+            .with_description("Higher-education tuition and fees (1098-T)")
+            .with_sort_order(249),
+    );
+
+    // --- Healthcare - Personal (complements Schedule A "Medical & Dental Expenses") ---
+    let healthcare_personal = Category::personal("Healthcare - Personal")
+        .with_description("Out-of-pocket health spending not tied to business")
+        .with_sort_order(250);
+    let healthcare_personal_id = healthcare_personal.id;
+    categories.push(healthcare_personal);
+    // Co-pays are Schedule A (A-1) deductible.
+    categories.push(
+        Category::expense("Co-pays")
+            .with_parent(healthcare_personal_id)
+            .with_schedule_c("A-1")
+            .with_description("Medical and dental co-pays (Schedule A deductible)")
+            .with_sort_order(251),
+    );
+    categories.push(
+        Category::personal("Vitamins")
+            .with_parent(healthcare_personal_id)
+            .with_description("Vitamins and supplements (generally not deductible)")
+            .with_sort_order(252),
+    );
+    categories.push(
+        Category::personal("Gym Memberships")
+            .with_parent(healthcare_personal_id)
+            .with_description("Gym and fitness memberships (generally not deductible)")
+            .with_sort_order(253),
+    );
+    categories.push(
+        Category::personal("HSA Contributions")
+            .with_parent(healthcare_personal_id)
+            .with_description("Health Savings Account contributions (1099-SA / Form 8889)")
+            .with_sort_order(254),
+    );
+
+    // --- Home (non-rental primary residence) ---
+    let home = Category::personal("Home")
+        .with_description("Primary residence improvements and maintenance")
+        .with_sort_order(260);
+    let home_id = home.id;
+    categories.push(home);
+    categories.push(
+        Category::personal("Home Improvement")
+            .with_parent(home_id)
+            .with_description("Capital improvements that adjust cost basis")
+            .with_sort_order(261),
+    );
+    categories.push(
+        Category::personal("Home Maintenance")
+            .with_parent(home_id)
+            .with_description("Routine repairs and upkeep (not capital improvements)")
+            .with_sort_order(262),
+    );
+
+    categories
 }
 
 #[cfg(test)]
@@ -357,5 +646,31 @@ mod tests {
             .filter(|c| c.category_type == CategoryType::Expense)
             .count();
         assert!(expense_count > 0);
+    }
+
+    #[test]
+    fn test_default_category_names_are_unique() {
+        let categories = default_categories();
+        let mut names: Vec<&str> = categories.iter().map(|c| c.name.as_str()).collect();
+        names.sort_unstable();
+        let len_before = names.len();
+        names.dedup();
+        assert_eq!(len_before, names.len(), "duplicate category names in defaults");
+    }
+
+    #[test]
+    fn test_default_category_parents_resolve_and_precede_children() {
+        let categories = default_categories();
+        let mut seen_ids = std::collections::HashSet::new();
+        for cat in &categories {
+            if let Some(parent_id) = cat.parent_id {
+                assert!(
+                    seen_ids.contains(&parent_id),
+                    "child '{}' appears before (or without) its parent in default_categories()",
+                    cat.name
+                );
+            }
+            seen_ids.insert(cat.id);
+        }
     }
 }

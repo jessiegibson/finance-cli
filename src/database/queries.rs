@@ -459,4 +459,35 @@ mod tests {
         assert!(office.is_some());
         assert_eq!(office.unwrap().schedule_c_line, Some("L18".to_string()));
     }
+
+    #[test]
+    fn test_category_defaults_hierarchy_persists() {
+        let conn = initialize_test().unwrap();
+        let repo = CategoryRepository::new(&conn);
+        repo.insert_defaults().unwrap();
+
+        // A known child resolves to its expected parent in the DB.
+        let groceries = repo
+            .find_by_name("Groceries")
+            .unwrap()
+            .expect("Groceries default missing");
+        let family = repo
+            .find_by_name("Family")
+            .unwrap()
+            .expect("Family default missing");
+        assert_eq!(groceries.parent_id, Some(family.id));
+
+        // Every child's parent_id points to a real category row.
+        let all = repo.find_all().unwrap();
+        let ids: std::collections::HashSet<uuid::Uuid> = all.iter().map(|c| c.id).collect();
+        for cat in &all {
+            if let Some(pid) = cat.parent_id {
+                assert!(
+                    ids.contains(&pid),
+                    "category '{}' has dangling parent_id",
+                    cat.name
+                );
+            }
+        }
+    }
 }
